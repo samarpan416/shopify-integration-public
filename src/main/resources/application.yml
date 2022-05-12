@@ -1,0 +1,19 @@
+#feign:
+#  client:
+#    config:
+#      shopify:
+#        connectTimeout: 5000
+#        readTimeout: 5000
+#        loggerLevel: full
+#        client :
+##        errorDecoder: com.example.SimpleErrorDecoder
+##        retryer: com.example.SimpleRetryer
+#        requestInterceptors:
+#          - com.uniware.integrations.config.ShopifyRequestInterceptor
+#        decode404: false
+##        encoder: com.example.SimpleEncoder
+##        decoder: com.example.SimpleDecoder
+##        contract: com.example.SimpleContract
+shopify:
+  api:
+    version: 2021-04
