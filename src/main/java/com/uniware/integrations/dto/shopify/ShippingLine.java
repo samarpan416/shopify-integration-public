@@ -1,0 +1,21 @@
+package com.uniware.integrations.dto.shopify;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import lombok.Data;
+
+@Data
+public class ShippingLine{
+
+	@JsonProperty("code")
+	private String code;
+
+	@JsonProperty("title")
+	private String title;
+
+	@JsonProperty("price")
+	private String price;
+
+	@JsonProperty("id")
+	private Long id;
+}

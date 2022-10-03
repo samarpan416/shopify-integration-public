@@ -1,31 +1,22 @@
 package com.uniware.integrations.contexts;
 
-import java.util.HashMap;
+import lombok.ToString;
 
+import java.util.*;
+
+@ToString
 public class ShopifyRequestContext {
-
     private static final ThreadLocal<ShopifyRequestContext> ctx = new ThreadLocal<>();
 
     private String hostname;
-    HashMap<String,String> headers;
-
-    public ShopifyRequestContext(String hostname,HashMap<String,String> headers) {
-        this.hostname=hostname;
-        this.headers=headers;
-    }
-    public ShopifyRequestContext(ShopifyRequestContext shopifyRequestContext){
-        setHostname(shopifyRequestContext.getHostname());
-        setHeaders(shopifyRequestContext.getHeaders());
-    }
-
-    public static void setContext(ShopifyRequestContext shopifyRequestContext){
-        ctx.set(new ShopifyRequestContext(shopifyRequestContext));
-    }
+    private String tenantCode;
+    private String locationId;
+    Map<String, Collection<String>> headers = new HashMap<>();
 
     public static ShopifyRequestContext current() {
         ShopifyRequestContext requestContext = ctx.get();
         if (requestContext == null) {
-            requestContext = new ShopifyRequestContext("xyz.com",new HashMap<>());
+            requestContext = new ShopifyRequestContext();
             ctx.set(requestContext);
         }
         return requestContext;
@@ -43,11 +34,27 @@ public class ShopifyRequestContext {
         this.hostname = hostname;
     }
 
-    public HashMap<String, String> getHeaders() {
+    public Map<String, Collection<String>> getHeaders() {
         return headers;
     }
 
-    public void setHeaders(HashMap<String, String> headers) {
+    public void setHeaders(Map<String, Collection<String>> headers) {
         this.headers = headers;
+    }
+
+    public String getTenantCode() {
+        return tenantCode;
+    }
+
+    public void setTenantCode(String tenantCode) {
+        this.tenantCode = tenantCode;
+    }
+
+    public String getLocationId() {
+        return locationId;
+    }
+
+    public void setLocationId(String locationId) {
+        this.locationId = locationId;
     }
 }

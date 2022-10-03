@@ -15,5 +15,13 @@
 ##        decoder: com.example.SimpleDecoder
 ##        contract: com.example.SimpleContract
 shopify:
-  api:
-    version: 2021-04
+    api:
+        version: 2021-04
+
+logging:
+  level:
+    com.uniware.integrations.clients.*: DEBUG
+
+service:
+  public:
+    url: https://6911-150-242-75-110.in.ngrok.io
