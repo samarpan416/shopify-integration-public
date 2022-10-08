@@ -2,17 +2,13 @@ package com.uniware.integrations.dto.shopify;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.unifier.core.utils.StringUtils;
-import com.uniware.integrations.clients.ShopifyClient;
 import com.uniware.integrations.dto.ApiError;
-import com.uniware.integrations.dto.GraphQLQueries;
-import com.uniware.integrations.dto.GraphQLRequest;
-import com.uniware.integrations.dto.GraphQLResponse;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.*;
 
 @Data
@@ -120,6 +116,8 @@ public class Order {
     private String gateway;
     @JsonProperty("source_name")
     private String sourceName;
+    @JsonIgnore
+    private BigDecimal flitsDiscountCodeAmount = BigDecimal.ZERO;
 
     public ShopifyAddress getBillingAddress() {
         if (this.billingAddress != null) return this.billingAddress;
@@ -152,5 +150,10 @@ public class Order {
             errors.add(ApiError.builder().message("shippingAddress, billingAddress and customerDefaultAddress are null").build());
         }
         return errors;
+    }
+
+    @JsonIgnore
+    public BigDecimal addFlitsDiscountCodeAmount(BigDecimal amount) {
+        return this.flitsDiscountCodeAmount.add(amount);
     }
 }

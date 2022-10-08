@@ -1,15 +1,14 @@
 package com.uniware.integrations.services.saleorder;
 
 import com.uniware.integrations.dto.*;
-import com.uniware.integrations.dto.shopify.Location;
-import com.uniware.integrations.dto.shopify.Order;
-import com.uniware.integrations.dto.shopify.Transaction;
+import com.uniware.integrations.dto.shopify.*;
 import com.uniware.integrations.uniware.dto.saleOrder.request.CreateSaleOrderRequest;
 import com.uniware.integrations.uniware.dto.saleOrder.request.CustomFieldValue;
 import com.uniware.integrations.uniware.dto.saleOrder.request.PushSaleOrderStatusRequest;
 import com.uniware.integrations.uniware.dto.saleOrder.request.SaleOrder;
 import org.springframework.http.ResponseEntity;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -32,4 +31,7 @@ public interface ISaleOrderService {
     ApiResponse<Location> getLocationById(String id);
     ApiResponse<Object> verifyConnectors(ConnectorVerificationRequest verifyConnectorsRequest);
     ShopifyOrderMetadata getShopifyOrderMetadata(String id);
+    BigDecimal getPrepaidAmount(Order order, BigDecimal shippingCharges, BigDecimal giftDiscount);
+    BigDecimal prepareDiscount(Order order, LineItem lineItem);
+    boolean shouldFetchOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
 }

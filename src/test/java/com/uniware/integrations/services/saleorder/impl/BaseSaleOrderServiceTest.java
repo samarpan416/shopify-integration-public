@@ -4,9 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.unifier.core.utils.CollectionUtils;
+import com.uniware.integrations.dto.LineItemMetadata;
 import com.uniware.integrations.clients.ShopifyClient;
 import com.uniware.integrations.dto.ApiResponse;
+import com.uniware.integrations.dto.SaleOrderStatusSyncRequest;
+import com.uniware.integrations.dto.ShopifyOrderMetadata;
+import com.uniware.integrations.dto.StatusSyncSoi;
 import com.uniware.integrations.dto.shopify.*;
+import com.uniware.integrations.uniware.dto.saleOrder.request.PushSaleOrderStatusRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -41,9 +47,9 @@ class BaseSaleOrderServiceTest {
         String id = DEFAULT_ORDER_ID;
         OrderWrapper mockOrderWrapper = getMockOrderWrapper(id);
         when(mockShopifyClient.getOrderById(any(String.class))).thenReturn(mockOrderWrapper);
-        ApiResponse response = baseSaleOrderService.getOrder(id);
+        ApiResponse<Order> response = baseSaleOrderService.getOrder(id);
         assertEquals("Order found", response.getMessage(), "should set correct message");
-        assertEquals(mockOrderWrapper, response.getData(), "should return correct order json");
+        assertEquals(mockOrderWrapper.getOrder(), response.getData(), "should return correct order json");
     }
 
 //     @DisplayName("shouldFetchOrder method")
@@ -61,6 +67,102 @@ class BaseSaleOrderServiceTest {
 // //            verify(baseSaleOrderService).getAllowedProvinceCodes();
 //        });
 //     }
+
+    @DisplayName("orderStatusSync method")
+    @Test
+    void orderStatusSync_case1() {
+        SaleOrderStatusSyncRequest saleOrderStatusSyncRequest = new SaleOrderStatusSyncRequest();
+        ShopifyOrderMetadata shopifyOrderMetadata = new ShopifyOrderMetadata();
+        List<StatusSyncSoi> statusSyncSaleOrderItems = new ArrayList<>();
+        StatusSyncSoi statusSyncSoi1 = new StatusSyncSoi();
+        statusSyncSoi1.setCode("11626649190582-0");
+        statusSyncSoi1.setChannelSaleOrderItemCode("11626649190582");
+        statusSyncSoi1.setCombinationIdentifier("11626649190582");
+        statusSyncSoi1.setStatusCode("FULFILLABLE");
+        statusSyncSoi1.setCancellable(true);
+        statusSyncSoi1.setReturned(false);
+        statusSyncSoi1.setReversePickable(false);
+        StatusSyncSoi statusSyncSoi2 = new StatusSyncSoi();
+        statusSyncSoi2.setCode("11626649190582-1");
+        statusSyncSoi2.setChannelSaleOrderItemCode("11626649190582");
+        statusSyncSoi2.setCombinationIdentifier("11626649190582");
+        statusSyncSoi2.setStatusCode("FULFILLABLE");
+        statusSyncSoi2.setCancellable(true);
+        statusSyncSoi2.setReturned(false);
+        statusSyncSoi2.setReversePickable(false);
+        statusSyncSaleOrderItems.add(statusSyncSoi1);
+        statusSyncSaleOrderItems.add(statusSyncSoi2);
+
+        Map<String, LineItemMetadata> lineItemIdToMetadata = new HashMap<>();
+        LineItemMetadata lineItemMetadata1 = new LineItemMetadata();
+        lineItemMetadata1.setCancelledQty(1);
+        lineItemMetadata1.setReturnedQty(0);
+        lineItemIdToMetadata.put("11626649190582", lineItemMetadata1);
+
+        shopifyOrderMetadata.setOrderCancelled(false);
+        shopifyOrderMetadata.setFulfillmentStatus(null);
+        shopifyOrderMetadata.setLineItemIdToMetadata(lineItemIdToMetadata);
+        saleOrderStatusSyncRequest.setShopifyOrderMetadata(shopifyOrderMetadata);
+        saleOrderStatusSyncRequest.setStatusSyncSaleOrderItems(statusSyncSaleOrderItems);
+        ApiResponse<List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem>> apiResponse = baseSaleOrderService.orderStatusSync("4568483954870", saleOrderStatusSyncRequest);
+        List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem> wsSaleOrderItems = apiResponse.getData();
+
+        List<String> cancelledSoiCodes = wsSaleOrderItems.stream().filter(wsSaleOrderItem -> "CANCELLED".equals(wsSaleOrderItem.getStatusCode())).map(PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem::getCode).collect(Collectors.toList());
+        List<String> expectedCancelledSoiCodes = Arrays.asList("11626649190582-0", "11626649190582-1");
+        assertEquals(ApiResponse.STATUS.SUCCESS, apiResponse.getStatus());
+        assertEquals(expectedCancelledSoiCodes.size(), cancelledSoiCodes.size());
+        assertTrue(isEqualList(expectedCancelledSoiCodes, cancelledSoiCodes));
+    }
+
+    @DisplayName("orderStatusSync method")
+    @Test
+    void orderStatusSync_case2() {
+        SaleOrderStatusSyncRequest saleOrderStatusSyncRequest = new SaleOrderStatusSyncRequest();
+        ShopifyOrderMetadata shopifyOrderMetadata = new ShopifyOrderMetadata();
+        List<StatusSyncSoi> statusSyncSaleOrderItems = new ArrayList<>();
+        StatusSyncSoi statusSyncSoi1 = new StatusSyncSoi();
+        statusSyncSoi1.setCode("11626649190582-0");
+        statusSyncSoi1.setChannelSaleOrderItemCode("11626649190582");
+        statusSyncSoi1.setStatusCode("FULFILLABLE");
+        statusSyncSoi1.setCancellable(true);
+        statusSyncSoi1.setReturned(false);
+        statusSyncSoi1.setReversePickable(false);
+        StatusSyncSoi statusSyncSoi2 = new StatusSyncSoi();
+        statusSyncSoi2.setCode("11626649190582-1");
+        statusSyncSoi2.setChannelSaleOrderItemCode("11626649190582");
+        statusSyncSoi2.setStatusCode("FULFILLABLE");
+        statusSyncSoi2.setCancellable(true);
+        statusSyncSoi2.setReturned(false);
+        statusSyncSoi2.setReversePickable(false);
+        statusSyncSaleOrderItems.add(statusSyncSoi1);
+        statusSyncSaleOrderItems.add(statusSyncSoi2);
+
+        Map<String, LineItemMetadata> lineItemIdToMetadata = new HashMap<>();
+        LineItemMetadata lineItemMetadata1 = new LineItemMetadata();
+        lineItemMetadata1.setCancelledQty(1);
+        lineItemMetadata1.setReturnedQty(0);
+        lineItemIdToMetadata.put("11626649190582", lineItemMetadata1);
+
+        shopifyOrderMetadata.setOrderCancelled(false);
+        shopifyOrderMetadata.setFulfillmentStatus(null);
+        shopifyOrderMetadata.setLineItemIdToMetadata(lineItemIdToMetadata);
+        saleOrderStatusSyncRequest.setShopifyOrderMetadata(shopifyOrderMetadata);
+        saleOrderStatusSyncRequest.setStatusSyncSaleOrderItems(statusSyncSaleOrderItems);
+        ApiResponse<List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem>> apiResponse = baseSaleOrderService.orderStatusSync("4568483954870", saleOrderStatusSyncRequest);
+        List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem> wsSaleOrderItems = apiResponse.getData();
+
+        List<String> cancelledSoiCodes = wsSaleOrderItems.stream().filter(wsSaleOrderItem -> "CANCELLED".equals(wsSaleOrderItem.getStatusCode())).map(PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem::getCode).collect(Collectors.toList());
+        List<String> expectedCancelledSoiCodes = Arrays.asList("11626649190582-0", "11626649190582-1");
+        assertEquals(ApiResponse.STATUS.SUCCESS, apiResponse.getStatus());
+        assertEquals(1, cancelledSoiCodes.size());
+        assertEquals(1,expectedCancelledSoiCodes.stream().filter(cancelledSoiCodes::contains).count());
+    }
+
+    private <T> boolean isEqualList(List<T> list1, List<T> list2) {
+        if (list1 == null && list2 == null) return true;
+        if (list1 == null || list2 == null) return false;
+        return list1.size() == list2.size() && list1.containsAll(list2) && list2.containsAll(list1);
+    }
 
     @DisplayName("parseTagsAsList method")
     @Test
@@ -122,7 +224,7 @@ class BaseSaleOrderServiceTest {
             refundLineItems.add(refundLineItem);
             refund.setRefundLineItems(refundLineItems);
             refunds.add(refund);
-            updateLineItemMetadataMethod.invoke(updateLineItemMetadataMethod,refunds,null);
+            updateLineItemMetadataMethod.invoke(updateLineItemMetadataMethod, refunds, null);
         } catch (NoSuchMethodException e) {
 
         } catch (InvocationTargetException | IllegalAccessException e) {

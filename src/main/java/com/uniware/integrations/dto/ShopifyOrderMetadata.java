@@ -1,7 +1,7 @@
 package com.uniware.integrations.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.uniware.integrations.LineItemMetadata;
+import com.uniware.integrations.dto.LineItemMetadata;
 import com.uniware.integrations.services.saleorder.impl.BaseSaleOrderService.UNIWARE_ORDER_ITEM_STATUS;
 
 import lombok.Data;

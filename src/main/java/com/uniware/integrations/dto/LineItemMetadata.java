@@ -1,4 +1,4 @@
-package com.uniware.integrations;
+package com.uniware.integrations.dto;
 
 import lombok.Data;
 @Data

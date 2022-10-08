@@ -9,7 +9,7 @@ import com.unifier.core.utils.JsonUtils;
 import com.unifier.core.utils.ValidatorUtils;
 import com.unifier.scraper.sl.expression.SLExpression;
 import com.unifier.scraper.sl.runtime.ScriptExecutionContext;
-import com.uniware.integrations.LineItemMetadata;
+import com.uniware.integrations.dto.LineItemMetadata;
 import com.uniware.integrations.clients.ShopifyClient;
 import com.uniware.integrations.contexts.ShopifyRequestContext;
 import com.uniware.integrations.dto.*;
@@ -362,7 +362,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return ApiResponse.<SaleOrder>success().message("WsSaleOrder created successfully").data(prepareSaleOrder(order, getWsSaleOrderRequest.getConfigurationParameters(), getWsSaleOrderRequest.getConnectorParameters())).build();
     }
 
-    private List<Transaction> getTransactions(Order order) {
+    protected List<Transaction> getTransactions(Order order) {
         List<Transaction> transactions = order.getTransactions();
         if (transactions == null) {
             transactions = fetchOrderTransactions(order.getAdminGraphqlApiId());
@@ -416,10 +416,6 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrder.setSaleOrderItems(prepareSaleOrderItems(order));
         saleOrder.setCustomFieldValues(prepareCustomFieldValues(configurationParameters.getCustomFieldsCustomization(), order, transactions));
         return saleOrder;
-    }
-
-    private String getShouldIncludePrefixOrSuffix() {
-        return "TRUE";
     }
 
     private String getMobileNumber(Order order) {
@@ -479,7 +475,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrderItem.setItemName(prepareItemName(lineItem));
         saleOrderItem.setShippingMethodCode(SHIPPING_METHOD_CODE);
         saleOrderItem.setGiftMessage(prepareGiftMessage(lineItem));
-        BigDecimal itemDiscount = prepareDiscount(lineItem);
+        BigDecimal itemDiscount = prepareDiscount(order, lineItem);
         BigDecimal sellingPrice = prepareSellingPrice(lineItem, itemDiscount, itemTax);
         saleOrderItem.setDiscount(itemDiscount);
         saleOrderItem.setTotalPrice(sellingPrice);
@@ -535,7 +531,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return sellingPrice.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : sellingPrice;
     }
 
-    private BigDecimal prepareDiscount(LineItem lineItem) {
+    public BigDecimal prepareDiscount(Order order, LineItem lineItem) {
         return lineItem.getDiscountAllocations().stream().reduce(BigDecimal.ZERO, (totalDiscount, discountAllocation) -> totalDiscount.add(new BigDecimal(discountAllocation.getAmount())), BigDecimal::add);
     }
 
@@ -720,7 +716,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return shippingCharges.get() != null ? new BigDecimal(shippingCharges.get()) : BigDecimal.ZERO;
     }
 
-    private BigDecimal getPrepaidAmount(Order order, BigDecimal shippingCharges, BigDecimal giftDiscount) {
+    public BigDecimal getPrepaidAmount(Order order, BigDecimal shippingCharges, BigDecimal giftDiscount) {
         BigDecimal prepaidAmount = giftDiscount;
         BigDecimal subtotal = new BigDecimal(order.getTotalLineItemsPrice());
         BigDecimal totalOrderAmount = subtotal.add(shippingCharges);
@@ -766,38 +762,38 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return orders.stream().filter(order -> shouldFetchOrder(order, configurationParameters, connectorParameters)).collect(Collectors.toList());
     }
 
-    boolean shouldFetchOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters) {
+    public boolean shouldFetchOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters) {
         if (isPendency(order)) {
-            LOG.warn("Order {} is a pendency", order.getId());
+            LOG.info("Order {} is a pendency", order.getId());
             return false;
         }
         if (!order.isConfirmed()) {
-            LOG.warn("Order {} not confirmed", order.getId());
+            LOG.info("Order {} not confirmed", order.getId());
             return false;
         }
         String channelLocationId = connectorParameters.getLocationId();
         boolean isPosEnabled = configurationParameters.isPosEnabled();
         if (!(isPosEnabled && order.getLocationId() != null && channelLocationId.equalsIgnoreCase(order.getLocationId().toString())) && !(!isPosEnabled && (order.getLocationId() == null || StringUtils.isEmpty(order.getLocationId().toString())))) {
-            LOG.warn("Order {} not confirmed", order.getId());
+            LOG.info("Order {} not confirmed", order.getId());
             return false;
         }
 
         List<String> allowedProvinceCodesList = parseAsList(configurationParameters.getApplicableProvinceCodes(), ",");
         String provinceCode = order.getProvinceCode();
         if (!allowedProvinceCodesList.isEmpty() && !allowedProvinceCodesList.contains(provinceCode)) {
-            LOG.warn("Order {} provinceCode {} not in applicableProvinceCodes {}", order.getId(), provinceCode, allowedProvinceCodesList);
+            LOG.info("Order {} provinceCode {} not in applicableProvinceCodes {}", order.getId(), provinceCode, allowedProvinceCodesList);
             return false;
         }
 
         if (order.getFulfillmentStatus() != null && !Order.FulfillmentStatus.PARTIAL.equals(order.getFulfillmentStatus())) {
-            LOG.warn("Order {} | Invalid fulfillmentStatus {}", order.getId(), order.getFulfillmentStatus());
+            LOG.info("Order {} | Invalid fulfillmentStatus {}", order.getId(), order.getFulfillmentStatus());
             return false;
         }
 
         List<Transaction> transactions = getTransactions(order);
         String paymentMode = getPaymentMode(transactions);
         if ("prepaid".equals(paymentMode) && !Order.FinancialStatus.PAID.equals(order.getFinancialStatus())) {
-            LOG.warn("Order {} | Invalid financialStatus {} | paymentMode {}", order.getId(), order.getFinancialStatus(), paymentMode);
+            LOG.info("Order {} | Invalid financialStatus {} | paymentMode {}", order.getId(), order.getFinancialStatus(), paymentMode);
             return false;
         }
         return true;
@@ -808,7 +804,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
     }
 
     List<String> parseAsList(String input, String delimiter) {
-        if(StringUtils.isBlank(input))
+        if (StringUtils.isBlank(input))
             return Collections.emptyList();
         List<String> tagsList = Arrays.asList(StringUtils.getNotNullValue(input).split(delimiter));
         tagsList = tagsList.stream().map(String::trim).collect(Collectors.toList());
@@ -849,18 +845,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return paymentMode;
     }
 
-    public static boolean containsAnyIgnoreCase(String input, String... values) {
-        if (input == null) return false;
-
-        for (String value : values) {
-            if (input.toLowerCase().contains(value.toLowerCase())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private BigDecimal getGiftDiscount(List<Transaction> transactions) {
+        if(transactions == null)
+            return BigDecimal.ZERO;
         return transactions.stream().reduce(BigDecimal.ZERO, (giftDiscount, transaction) -> {
             if (!"gift_card".equalsIgnoreCase(transaction.getGateway()) || !"success".equalsIgnoreCase(transaction.getStatus()))
                 return giftDiscount;
@@ -1156,7 +1143,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                     String saleOrderCode = order.getId().toString();
 
                     if (saleOrderCodeToMetadata.containsKey(saleOrderCode)) {
-                        LOG.warn("Skipping sale order {} since it has already been handled", saleOrderCode);
+                        LOG.info("Skipping sale order {} since it has already been handled", saleOrderCode);
                     } else {
                         saleOrderCodeToMetadata.put(saleOrderCode, getShopifyOrderMetadata(order));
                     }
