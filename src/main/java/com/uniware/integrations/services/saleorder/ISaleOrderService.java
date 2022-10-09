@@ -2,6 +2,7 @@ package com.uniware.integrations.services.saleorder;
 
 import com.uniware.integrations.dto.*;
 import com.uniware.integrations.dto.shopify.*;
+import com.uniware.integrations.services.saleorder.impl.BaseSaleOrderService.SPLIT_SHIPMENT_CONDITION;
 import com.uniware.integrations.uniware.dto.saleOrder.request.CreateSaleOrderRequest;
 import com.uniware.integrations.uniware.dto.saleOrder.request.CustomFieldValue;
 import com.uniware.integrations.uniware.dto.saleOrder.request.PushSaleOrderStatusRequest;
@@ -19,7 +20,7 @@ public interface ISaleOrderService {
     CreateSaleOrderRequest prepareCreateSaleOrderRequest(Order order);
     List<Order> filterOrders(List<Order> orders, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
     ApiResponse<Order> getOrder(String id);
-    String getSplitShipmentCondition();
+    SPLIT_SHIPMENT_CONDITION getSplitShipmentCondition(ConfigurationParameters configurationParameters);
     Object orderReconciliation(LocalDate from, LocalDate to, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
     ResponseEntity<List<Pendency>> getPendencies(LocalDate from, LocalDate to, String pageSize, String pageInfo);
 //    List<Transaction> getOrderTransactions(String id);

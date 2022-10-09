@@ -51,10 +51,13 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.uniware.integrations.constants.ShopifyConstants.*;
+import static com.uniware.integrations.utils.ShopifyUtils.*;
 
 @Service
 @Qualifier("baseSaleOrderService")
 public class BaseSaleOrderService implements ISaleOrderService {
+    private static final int MAX_GIFT_MESSAGE_LENGTH = 256;
+
     private static final Logger LOG = LoggerFactory.getLogger(BaseSaleOrderService.class);
 
     private static final String DEFAULT_PHONE = "9999999999";
@@ -68,11 +71,11 @@ public class BaseSaleOrderService implements ISaleOrderService {
     @Value("${service.public.url}")
     public String SERVICE_HOSTNAME;
 
-    enum OrderState {
+    enum ORDER_STATE {
         UNFULFILLED, REFUNDED, PARTIALLY_REFUNDED, CANCELLED, FULFILLED
     }
 
-    public enum QueryParamNames {
+    public enum QUERY_PARAM_NAMES {
         UPDATED_AT_MIN, UPDATED_AT_MAX, PAGE_INFO, FULFILLMENT_STATUS, FINANCIAL_STATUS, FIELDS, STATUS, LIMIT;
 
         @Override
@@ -80,12 +83,18 @@ public class BaseSaleOrderService implements ISaleOrderService {
             return name().toLowerCase();
         }
     }
-
+    
     public enum UNIWARE_ORDER_ITEM_STATUS {
         CANCELLED,RETURN_EXPECTED,DISPATCHED;
     }
 
-    static EnumMap<OrderState, Map<String, Object>> orderStateToRequestParams = getOrderStatusToRequestParams();
+    public enum SPLIT_SHIPMENT_CONDITION {
+        DOMESTIC,
+        CUSTOM,
+        FULFILLMENT
+    }
+
+    static EnumMap<ORDER_STATE, Map<String, Object>> orderStateToRequestParams = getOrderStatusToRequestParams();
     Map<String, List<Transaction>> orderIdToTransactions = new HashMap<>();
 
     @Autowired
@@ -129,7 +138,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
     public ResponseEntity<ApiResponse<Map<String, SaleOrder>>> getSaleOrders(LocalDate from, LocalDate to, String pageSize, String pageInfo, GetSaleOrdersRequest getSaleOrdersRequest) throws BadRequest {
         validateRequestParams(from, to, pageSize);
         getSaleOrdersRequest.validate();
-        Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, pageInfo, orderStateToRequestParams.get(OrderState.UNFULFILLED));
+        Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, pageInfo, orderStateToRequestParams.get(ORDER_STATE.UNFULFILLED));
         String nextPageInfo = paginatedOrders.getFirst();
 
         HttpHeaders responseHeaders = new HttpHeaders();
@@ -168,7 +177,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
 
     private Pair<String, List<Order>> getSaleOrdersInternal(LocalDate from, LocalDate to, String pageSize, String pageInfo, Map<String, Object> additionalParams) {
         Map<String, Object> requestParams = new HashMap<>();
-        requestParams.put(QueryParamNames.LIMIT.toString(), getPageSize(pageSize));
+        requestParams.put(QUERY_PARAM_NAMES.LIMIT.toString(), getPageSize(pageSize));
 
         boolean isFirstPage = StringUtils.isBlank(pageInfo);
         if (isFirstPage) {
@@ -177,9 +186,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
             if (to == null) to = LocalDate.now();
             to = to.plusDays(1);
             requestParams.putAll(additionalParams);
-            requestParams.put(QueryParamNames.UPDATED_AT_MIN.toString(), from.toString());
-            requestParams.put(QueryParamNames.UPDATED_AT_MAX.toString(), to.toString());
-        } else requestParams.put(QueryParamNames.PAGE_INFO.toString(), pageInfo);
+            requestParams.put(QUERY_PARAM_NAMES.UPDATED_AT_MIN.toString(), from.toString());
+            requestParams.put(QUERY_PARAM_NAMES.UPDATED_AT_MAX.toString(), to.toString());
+        } else requestParams.put(QUERY_PARAM_NAMES.PAGE_INFO.toString(), pageInfo);
 
         ResponseEntity<OrdersWrapper> response = shopifyClient.getOrders(requestParams);
         OrdersWrapper ordersWrapper = response.getBody();
@@ -216,7 +225,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         List<Order> pendencyOrders = null;
         String currentPageInfo = pageInfo;
         do {
-            paginatedOrders = getSaleOrdersInternal(from, to, pageSize, currentPageInfo, orderStateToRequestParams.get(OrderState.UNFULFILLED));
+            paginatedOrders = getSaleOrdersInternal(from, to, pageSize, currentPageInfo, orderStateToRequestParams.get(ORDER_STATE.UNFULFILLED));
             pendencyOrders = paginatedOrders.getSecond().stream().filter(this::isPendency).collect(Collectors.toList());
             currentPageInfo = paginatedOrders.getFirst();
         } while (currentPageInfo != null && pendencyOrders.isEmpty());
@@ -252,7 +261,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         String nextPageInfo = null;
         List<CreateSaleOrderRequest> requests = new ArrayList<>();
         do {
-            Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, PAGE_SIZE, nextPageInfo, orderStateToRequestParams.get(OrderState.UNFULFILLED));
+            Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, PAGE_SIZE, nextPageInfo, orderStateToRequestParams.get(ORDER_STATE.UNFULFILLED));
             nextPageInfo = paginatedOrders.getFirst();
             List<Order> orders = paginatedOrders.getSecond();
             orders.stream().filter(order -> shouldFetchOrder(order, configurationParameters, connectorParameters)).forEach(order -> {
@@ -280,12 +289,12 @@ public class BaseSaleOrderService implements ISaleOrderService {
     }
 
     @Override
-    public String getSplitShipmentCondition() {
-        return getSplitShipmentConditionInternal();
+    public SPLIT_SHIPMENT_CONDITION getSplitShipmentCondition(ConfigurationParameters configurationParameters) {
+        return getSplitShipmentConditionInternal(configurationParameters);
     }
 
-    public String getSplitShipmentConditionInternal() {
-        return "placeholder";
+    public SPLIT_SHIPMENT_CONDITION getSplitShipmentConditionInternal(ConfigurationParameters configurationParameters) {
+        return configurationParameters.getSplitShipmentCondition();
     }
 
     private Location getLocation(String id) {
@@ -413,7 +422,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrder.setAddresses(prepareAddresses(order, configurationParameters.isStateCodeRequired()));
         saleOrder.setBillingAddress(new BillingAddress("1"));
         saleOrder.setShippingAddress(new ShippingAddress(String.valueOf(saleOrder.getAddresses().size())));
-        saleOrder.setSaleOrderItems(prepareSaleOrderItems(order));
+        saleOrder.setSaleOrderItems(prepareSaleOrderItems(order,configurationParameters));
         saleOrder.setCustomFieldValues(prepareCustomFieldValues(configurationParameters.getCustomFieldsCustomization(), order, transactions));
         return saleOrder;
     }
@@ -540,7 +549,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return "placeholder";
     }
 
-    private List<SaleOrderItem> prepareSaleOrderItems(Order order) {
+    private List<SaleOrderItem> prepareSaleOrderItems(Order order, ConfigurationParameters configurationParameters) {
         List<SaleOrderItem> saleOrderItems = new ArrayList<>();
         LinkedHashMap<String, Integer> boxIdToPacketNumberMap = new LinkedHashMap<>();
         int totalPackets = 1;
@@ -551,19 +560,23 @@ public class BaseSaleOrderService implements ISaleOrderService {
             if (lineItem.getQuantity() > 0) {
                 int qty = lineItem.getQuantity();
                 String channelSaleOrderItemCode = prepareChannelSaleOrderItemCode(lineItem);
-                Pair<Integer, Integer> packetInfo = getPacketInfo(lineItem, countryCode, totalPackets, boxIdToPacketNumberMap);
+                Pair<Integer, Integer> packetInfo = getPacketInfo(lineItem, countryCode, totalPackets, boxIdToPacketNumberMap,configurationParameters);
                 totalPackets = packetInfo.getFirst();
                 int packetNumberForItem = packetInfo.getSecond();
                 // TODO : Can't we just pass id-count both
                 BigDecimal lineItemTaxPerQty = order.isTaxesIncluded() ? BigDecimal.ZERO : getLineItemTaxPerQty(lineItem, qty);
                 if (qty == 1) {
                     saleOrderItems.add(prepareSaleOrderItem(order, lineItem, channelSaleOrderItemCode, packetNumberForItem, lineItemTaxPerQty));
-                    totalPackets = updateTotalPackets(countryCode, totalPackets);
+                    Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem,configurationParameters);
+                    totalPackets = updatedPacketInfo.getFirst();
+                    packetNumberForItem = updatedPacketInfo.getSecond();
                 } else {
                     for (int itemCount = 0; itemCount < qty; ++itemCount) {
                         String soiCode = channelSaleOrderItemCode + '-' + itemCount;
                         saleOrderItems.add(prepareSaleOrderItem(order, lineItem, soiCode, packetNumberForItem, lineItemTaxPerQty));
-                        totalPackets = updateTotalPackets(countryCode, totalPackets);
+                        Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem, configurationParameters);
+                        totalPackets = updatedPacketInfo.getFirst();
+                        packetNumberForItem = updatedPacketInfo.getSecond();
                     }
                 }
             } else {
@@ -574,7 +587,6 @@ public class BaseSaleOrderService implements ISaleOrderService {
     }
 
     private BigDecimal getLineItemTaxPerQty(LineItem lineItem, int qty) {
-        // TODO: Use shop_money instead of price
         BigDecimal totalLineItemTax = lineItem.getTaxLines().stream().reduce(BigDecimal.ZERO, (totalTax, taxLine) -> {
             BigDecimal taxLineAmount = new BigDecimal(taxLine.getPriceSet().getShopMoney().getAmount());
             return totalTax.add(taxLineAmount);
@@ -587,18 +599,18 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return billingAddress != null ? billingAddress.getCountryCode() : null;
     }
 
-    private Pair<Integer, Integer> getPacketInfo(LineItem lineItem, String countryCode, int totalPackets, LinkedHashMap<String, Integer> boxIdToPacketNumberMap) {
-        String splitShipmentCondition = getSplitShipmentCondition();
+    private Pair<Integer, Integer> getPacketInfo(LineItem lineItem, String countryCode, int totalPackets, LinkedHashMap<String, Integer> boxIdToPacketNumberMap, ConfigurationParameters configurationParameters) {
+        SPLIT_SHIPMENT_CONDITION splitShipmentCondition = getSplitShipmentCondition(configurationParameters);
         int packetNumberForItem = 0;
         String channelPackageType = getChannelPackageType();
-        if ("FULFILLMENT".equalsIgnoreCase(splitShipmentCondition)) {
+        if (SPLIT_SHIPMENT_CONDITION.FULFILLMENT.equals(splitShipmentCondition)) {
             if ("FULFILLED".equalsIgnoreCase(lineItem.getFulfillmentStatus())) packetNumberForItem = 2;
             else packetNumberForItem = 1;
-        } else if ("CUSTOM".equalsIgnoreCase(splitShipmentCondition)) {
+        } else if (SPLIT_SHIPMENT_CONDITION.CUSTOM.equals(splitShipmentCondition)) {
             Pair<Integer, Integer> packetInfo = getPacketInfoForCYOB(lineItem, totalPackets, packetNumberForItem, boxIdToPacketNumberMap);
             totalPackets = packetInfo.getFirst();
             packetNumberForItem = packetInfo.getSecond();
-        } else if ("DOMESTIC".equalsIgnoreCase(splitShipmentCondition) && "IN".equalsIgnoreCase(countryCode)) {
+        } else if (SPLIT_SHIPMENT_CONDITION.DOMESTIC.equals(splitShipmentCondition) && "IN".equalsIgnoreCase(countryCode)) {
             packetNumberForItem = totalPackets;
         } else if ("FIXED".equalsIgnoreCase(channelPackageType)) {
             // TODO : Check in backend code if packet number = 0 or 1 have some special handling or not
@@ -629,15 +641,18 @@ public class BaseSaleOrderService implements ISaleOrderService {
             giftMessages.add(message);
         });
         String giftMessage = String.join(",", giftMessages);
-        if (giftMessage.length() > 256) giftMessage = giftMessage.substring(0, 256);
+        if (giftMessage.length() > MAX_GIFT_MESSAGE_LENGTH) giftMessage = giftMessage.substring(0, MAX_GIFT_MESSAGE_LENGTH);
         giftMessage = giftMessage.replaceAll("[^\u0000-\uffff]", "");
         return giftMessage;
     }
 
-    private Integer updateTotalPackets(String countryCode, int totalPackets) {
-        String splitShipmentCondition = getSplitShipmentCondition();
-        if ("DOMESTIC".equalsIgnoreCase(splitShipmentCondition) && "IN".equalsIgnoreCase(countryCode)) ++totalPackets;
-        return totalPackets;
+    private Pair<Integer, Integer> updatePacketInfo(String countryCode, int totalPackets, int packetNumberForItem, ConfigurationParameters configurationParameters) {
+        SPLIT_SHIPMENT_CONDITION splitShipmentCondition = getSplitShipmentCondition(configurationParameters);
+        if (SPLIT_SHIPMENT_CONDITION.DOMESTIC.equals(splitShipmentCondition) && "IN".equalsIgnoreCase(countryCode)) {
+            ++packetNumberForItem;
+            totalPackets = packetNumberForItem;
+        }
+        return new Pair<>(totalPackets, packetNumberForItem);
     }
 
     private List<Address> prepareAddresses(Order order, boolean stateCodeRequired) {
@@ -861,35 +876,35 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return new GsonBuilder().create().fromJson(json, typeOfT);
     }
 
-    private static EnumMap<OrderState, Map<String, Object>> getOrderStatusToRequestParams() {
-        EnumMap<OrderState, Map<String, Object>> orderStateToRequestParams = new EnumMap<>(OrderState.class);
+    private static EnumMap<ORDER_STATE, Map<String, Object>> getOrderStatusToRequestParams() {
+        EnumMap<ORDER_STATE, Map<String, Object>> orderStateToRequestParams = new EnumMap<>(ORDER_STATE.class);
         String responseFields = "id,financial_status,fulfillment_status,status,refunds,cancelled_at";
         Map<String, Object> refundedQueryParams = new HashMap<>();
-        refundedQueryParams.put(QueryParamNames.STATUS.toString(), "any");
-        refundedQueryParams.put(QueryParamNames.FINANCIAL_STATUS.toString(), "refunded");
-        refundedQueryParams.put(QueryParamNames.FIELDS.toString(), responseFields);
-        orderStateToRequestParams.put(OrderState.REFUNDED, refundedQueryParams);
+        refundedQueryParams.put(QUERY_PARAM_NAMES.STATUS.toString(), "any");
+        refundedQueryParams.put(QUERY_PARAM_NAMES.FINANCIAL_STATUS.toString(), "refunded");
+        refundedQueryParams.put(QUERY_PARAM_NAMES.FIELDS.toString(), responseFields);
+        orderStateToRequestParams.put(ORDER_STATE.REFUNDED, refundedQueryParams);
 
         Map<String, Object> partiallyRefundedQueryParams = new HashMap<>();
-        partiallyRefundedQueryParams.put(QueryParamNames.STATUS.toString(), "any");
-        partiallyRefundedQueryParams.put(QueryParamNames.FINANCIAL_STATUS.toString(), "partially_refunded");
-        partiallyRefundedQueryParams.put(QueryParamNames.FIELDS.toString(), responseFields);
-        orderStateToRequestParams.put(OrderState.PARTIALLY_REFUNDED, partiallyRefundedQueryParams);
+        partiallyRefundedQueryParams.put(QUERY_PARAM_NAMES.STATUS.toString(), "any");
+        partiallyRefundedQueryParams.put(QUERY_PARAM_NAMES.FINANCIAL_STATUS.toString(), "partially_refunded");
+        partiallyRefundedQueryParams.put(QUERY_PARAM_NAMES.FIELDS.toString(), responseFields);
+        orderStateToRequestParams.put(ORDER_STATE.PARTIALLY_REFUNDED, partiallyRefundedQueryParams);
 
         Map<String, Object> cancelledQueryParams = new HashMap<>();
-        cancelledQueryParams.put(QueryParamNames.STATUS.toString(), "cancelled");
-        cancelledQueryParams.put(QueryParamNames.FIELDS.toString(), responseFields);
-        orderStateToRequestParams.put(OrderState.CANCELLED, cancelledQueryParams);
+        cancelledQueryParams.put(QUERY_PARAM_NAMES.STATUS.toString(), "cancelled");
+        cancelledQueryParams.put(QUERY_PARAM_NAMES.FIELDS.toString(), responseFields);
+        orderStateToRequestParams.put(ORDER_STATE.CANCELLED, cancelledQueryParams);
 
         Map<String, Object> fulfilledQueryParams = new HashMap<>();
-        fulfilledQueryParams.put(QueryParamNames.STATUS.toString(), "any");
-        fulfilledQueryParams.put(QueryParamNames.FULFILLMENT_STATUS.toString(), "shipped");
-        fulfilledQueryParams.put(QueryParamNames.FIELDS.toString(), responseFields);
-        orderStateToRequestParams.put(OrderState.FULFILLED, fulfilledQueryParams);
+        fulfilledQueryParams.put(QUERY_PARAM_NAMES.STATUS.toString(), "any");
+        fulfilledQueryParams.put(QUERY_PARAM_NAMES.FULFILLMENT_STATUS.toString(), "shipped");
+        fulfilledQueryParams.put(QUERY_PARAM_NAMES.FIELDS.toString(), responseFields);
+        orderStateToRequestParams.put(ORDER_STATE.FULFILLED, fulfilledQueryParams);
 
         Map<String, Object> unfulfilledQueryParams = new HashMap<>();
-        unfulfilledQueryParams.put(QueryParamNames.FULFILLMENT_STATUS.toString(), "unfulfilled");
-        orderStateToRequestParams.put(OrderState.UNFULFILLED, unfulfilledQueryParams);
+        unfulfilledQueryParams.put(QUERY_PARAM_NAMES.FULFILLMENT_STATUS.toString(), "unfulfilled");
+        orderStateToRequestParams.put(ORDER_STATE.UNFULFILLED, unfulfilledQueryParams);
         return orderStateToRequestParams;
     }
 
@@ -1128,12 +1143,12 @@ public class BaseSaleOrderService implements ISaleOrderService {
     public ApiResponse<Map<String, ShopifyOrderMetadata>> statusSyncMetadata(LocalDate from, LocalDate to, String pageSize) {
         validateRequestParams(from, to, pageSize);
         Map<String, ShopifyOrderMetadata> saleOrderCodeToMetadata = new HashMap<>();
-        List<OrderState> orderStatesToSync = new ArrayList<>();
-        orderStatesToSync.add(OrderState.REFUNDED);
-        orderStatesToSync.add(OrderState.PARTIALLY_REFUNDED);
-        orderStatesToSync.add(OrderState.CANCELLED);
-        orderStatesToSync.add(OrderState.FULFILLED);
-        for (OrderState orderState : orderStatesToSync) {
+        List<ORDER_STATE> orderStatesToSync = new ArrayList<>();
+        orderStatesToSync.add(ORDER_STATE.REFUNDED);
+        orderStatesToSync.add(ORDER_STATE.PARTIALLY_REFUNDED);
+        orderStatesToSync.add(ORDER_STATE.CANCELLED);
+        orderStatesToSync.add(ORDER_STATE.FULFILLED);
+        for (ORDER_STATE orderState : orderStatesToSync) {
             String nextPageInfo = null;
             do {
                 Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, nextPageInfo, orderStateToRequestParams.get(orderState));
