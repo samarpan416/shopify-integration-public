@@ -393,7 +393,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         String orderId = order.getId().toString();
         saleOrder.setCode(orderId);
         List<Transaction> transactions = getTransactions(order);
-        boolean isCashOnDelivery = "cod".equals(getPaymentMode(transactions));
+        boolean isCashOnDelivery = "cod".equals(getPaymentMode(order));
         saleOrder.setCashOnDelivery(isCashOnDelivery);
         boolean shouldIncludePrefixOrSuffix = "TRUE".equalsIgnoreCase(connectorParameters.getPrefix());
         if (shouldIncludePrefixOrSuffix) saleOrder.setDisplayOrderCode(order.getName());
@@ -788,7 +788,18 @@ public class BaseSaleOrderService implements ISaleOrderService {
         }
         String channelLocationId = connectorParameters.getLocationId();
         boolean isPosEnabled = configurationParameters.isPosEnabled();
-        if (!(isPosEnabled && order.getLocationId() != null && channelLocationId.equalsIgnoreCase(order.getLocationId().toString())) && !(!isPosEnabled && (order.getLocationId() == null || StringUtils.isEmpty(order.getLocationId().toString())))) {
+        if (!(
+                isPosEnabled && 
+                order.getLocationId() != null && 
+                channelLocationId.equalsIgnoreCase(order.getLocationId().toString())
+            ) && 
+            !(
+                !isPosEnabled && 
+                (
+                    order.getLocationId() == null || 
+                    StringUtils.isEmpty(order.getLocationId().toString())
+                )
+            )) {
             LOG.info("Order {} not confirmed", order.getId());
             return false;
         }
@@ -805,8 +816,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
             return false;
         }
 
-        List<Transaction> transactions = getTransactions(order);
-        String paymentMode = getPaymentMode(transactions);
+        String paymentMode = getPaymentMode(order);
         if ("prepaid".equals(paymentMode) && !Order.FinancialStatus.PAID.equals(order.getFinancialStatus())) {
             LOG.info("Order {} | Invalid financialStatus {} | paymentMode {}", order.getId(), order.getFinancialStatus(), paymentMode);
             return false;
@@ -847,8 +857,10 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return !isPendency(order);
     }
 
-    String getPaymentMode(List<Transaction> transactions) {
+    public String getPaymentMode(Order order) {
+        List<Transaction> transactions = getTransactions(order);
         String paymentMode = "prepaid";
+
         for (Transaction transaction : transactions) {
             String gateway = transaction.getGateway();
             String status = transaction.getStatus();

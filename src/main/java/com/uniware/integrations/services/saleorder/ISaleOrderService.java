@@ -23,7 +23,6 @@ public interface ISaleOrderService {
     SPLIT_SHIPMENT_CONDITION getSplitShipmentCondition(ConfigurationParameters configurationParameters);
     Object orderReconciliation(LocalDate from, LocalDate to, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
     ResponseEntity<List<Pendency>> getPendencies(LocalDate from, LocalDate to, String pageSize, String pageInfo);
-//    List<Transaction> getOrderTransactions(String id);
     ApiResponse<Map<String, ShopifyOrderMetadata>> statusSyncMetadata(LocalDate from, LocalDate to, String pageSize);
     ApiResponse<List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem>> orderStatusSync(String orderId, SaleOrderStatusSyncRequest saleOrderStatusSyncRequest);
     String getPincodeDetails(String pincode);
@@ -35,4 +34,5 @@ public interface ISaleOrderService {
     BigDecimal getPrepaidAmount(Order order, BigDecimal shippingCharges, BigDecimal giftDiscount);
     BigDecimal prepareDiscount(Order order, LineItem lineItem);
     boolean shouldFetchOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
+    String getPaymentMode(Order order);
 }
