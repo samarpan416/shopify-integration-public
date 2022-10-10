@@ -1,6 +1,7 @@
 package com.uniware.integrations.services.saleorder;
 
 import com.uniware.integrations.services.saleorder.impl.BaseSaleOrderService;
+import com.uniware.integrations.services.saleorder.impl.IndieJewelFashionSaleOrderService;
 import com.uniware.integrations.services.saleorder.impl.OzivaSaleOrderService;
 import com.uniware.integrations.services.saleorder.impl.RarerabbitSaleOrderService;
 import com.uniware.integrations.services.saleorder.impl.RustOrangeSaleOrderService;
@@ -14,12 +15,14 @@ public class SaleOrderServiceFactory {
     RustOrangeSaleOrderService rustOrangeSaleOrderService;
     RarerabbitSaleOrderService rarerabbitSaleOrderService;
     OzivaSaleOrderService ozivaSaleOrderService;
+    IndieJewelFashionSaleOrderService indieJewelFashionSaleOrderService;
 
     @Autowired
     public SaleOrderServiceFactory(@Qualifier("baseSaleOrderService") BaseSaleOrderService baseSaleOrderService,
                                    @Qualifier("rustOrangeSaleOrderService") RustOrangeSaleOrderService rustOrangeSaleOrderService,
                                    @Qualifier("rarerabbitSaleOrderService") RarerabbitSaleOrderService rarerabbitSaleOrderService,
-                                   @Qualifier("ozivaSaleOrderService") OzivaSaleOrderService ozivaSaleOrderService) {
+                                   @Qualifier("ozivaSaleOrderService") OzivaSaleOrderService ozivaSaleOrderService,
+                                   @Qualifier("indieJewelFashionSaleOrderService") IndieJewelFashionSaleOrderService indieJewelFashionSaleOrderService) {
         this.baseSaleOrderService = baseSaleOrderService;
         this.rarerabbitSaleOrderService = rarerabbitSaleOrderService;
         this.rustOrangeSaleOrderService = rustOrangeSaleOrderService;
@@ -31,6 +34,7 @@ public class SaleOrderServiceFactory {
             case "rarerabbit": return rarerabbitSaleOrderService;
             case "rustorange": return rustOrangeSaleOrderService;
             case "oziva": return ozivaSaleOrderService;
+            case "indiejewelfashion": return indieJewelFashionSaleOrderService;
             default: return baseSaleOrderService;
         }
     }
