@@ -117,7 +117,7 @@ public class Order {
     @JsonProperty("source_name")
     private String sourceName;
     @JsonIgnore
-    private BigDecimal flitsDiscountCodeAmount = BigDecimal.ZERO;
+    private BigDecimal prepaidDiscountCodeAmount = BigDecimal.ZERO;
 
     public ShopifyAddress getBillingAddress() {
         if (this.billingAddress != null) return this.billingAddress;
@@ -153,7 +153,7 @@ public class Order {
     }
 
     @JsonIgnore
-    public BigDecimal addFlitsDiscountCodeAmount(BigDecimal amount) {
-        return this.flitsDiscountCodeAmount.add(amount);
+    public BigDecimal addPrepaidDiscountCodeAmount(BigDecimal amount) {
+        return this.prepaidDiscountCodeAmount.add(amount);
     }
 }

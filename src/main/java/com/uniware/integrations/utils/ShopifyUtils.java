@@ -15,7 +15,7 @@ public class ShopifyUtils {
         return Base64.getEncoder().encodeToString(stringToBeEncoded.getBytes());
     }
     public static boolean containsAnyIgnoreCase(String input, String... values) {
-        if (input == null) return false;
+        if (input == null || values == null) return false;
 
         for (String value : values) {
             if (input.toLowerCase().contains(value.toLowerCase())) {

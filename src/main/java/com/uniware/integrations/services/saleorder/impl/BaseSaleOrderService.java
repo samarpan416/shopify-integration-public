@@ -20,6 +20,7 @@ import com.uniware.integrations.exception.BadRequest;
 import com.uniware.integrations.services.saleorder.ISaleOrderService;
 import com.uniware.integrations.uniware.dto.saleOrder.request.*;
 import com.uniware.integrations.utils.Pair;
+import com.uniware.integrations.utils.ShopifyUtils;
 import com.uniware.integrations.utils.ZipCodeUtils;
 import org.apache.commons.lang.math.NumberUtils;
 import org.slf4j.Logger;
@@ -540,8 +541,32 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return sellingPrice.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : sellingPrice;
     }
 
+    private String[] getPrepaidDiscountCodes(String hostname) {
+        String shopName = getShopName(hostname);
+        // Fetch from mongodb
+        if("rarerabbit".equals(shopName))
+            return new String[]{"FLITS"};
+        else return new String[0];
+    }
+
+    private String getShopName(String hostname) {
+        if(hostname == null) return null;
+        return hostname.split("\\.")[0];
+    }
+
     public BigDecimal prepareDiscount(Order order, LineItem lineItem) {
-        return lineItem.getDiscountAllocations().stream().reduce(BigDecimal.ZERO, (totalDiscount, discountAllocation) -> totalDiscount.add(new BigDecimal(discountAllocation.getAmount())), BigDecimal::add);
+        BigDecimal lineItemDiscount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
+        String[] prepaidDiscountCodes = getPrepaidDiscountCodes(ShopifyRequestContext.current().getHostname());
+        for (DiscountAllocation discountAllocation : lineItem.getDiscountAllocations()) {
+            DiscountApplication discountApplication = order.getDiscountApplications().get(discountAllocation.getDiscountApplicationIndex());
+            BigDecimal discountAllocationAmount = new BigDecimal(discountAllocation.getAmount());
+            if (ShopifyUtils.containsAnyIgnoreCase(discountApplication.getCode(), prepaidDiscountCodes)) {
+                order.addPrepaidDiscountCodeAmount(discountAllocationAmount);
+            } else {
+                lineItemDiscount = lineItemDiscount.add(discountAllocationAmount);
+            }
+        }
+        return lineItemDiscount;
     }
 
     private String getChannelPackageType() {
@@ -739,6 +764,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
 
         if (prepaidAmount.add(totalDiscount).compareTo(totalOrderAmount) > 0)
             prepaidAmount = totalOrderAmount.subtract(totalDiscount);
+        
+        // Only being used by rarerabbit
+        prepaidAmount = prepaidAmount.add(order.getPrepaidDiscountCodeAmount());
         return prepaidAmount;
     }
 
