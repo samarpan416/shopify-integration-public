@@ -16,7 +16,7 @@ import java.util.Map;
 
 public interface ISaleOrderService {
     ResponseEntity<ApiResponse<Map<String, SaleOrder>>> getSaleOrders(LocalDate from, LocalDate to, String pageSize, String pageInfo,GetSaleOrdersRequest getSaleOrdersRequest);
-    List<CustomFieldValue> prepareCustomFieldValues(String customFieldsCustomization,Order order, List<Transaction> transactions);
+    List<CustomFieldValue> prepareCustomFieldValues(String customFieldsCustomization,Order order, SaleOrder saleOrder, List<Transaction> transactions);
     CreateSaleOrderRequest prepareCreateSaleOrderRequest(Order order);
     List<Order> filterOrders(List<Order> orders, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
     ApiResponse<Order> getOrder(String id);

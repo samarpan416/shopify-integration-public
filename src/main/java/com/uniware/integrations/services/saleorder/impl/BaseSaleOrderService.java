@@ -424,7 +424,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrder.setBillingAddress(new BillingAddress("1"));
         saleOrder.setShippingAddress(new ShippingAddress(String.valueOf(saleOrder.getAddresses().size())));
         saleOrder.setSaleOrderItems(prepareSaleOrderItems(order,configurationParameters));
-        saleOrder.setCustomFieldValues(prepareCustomFieldValues(configurationParameters.getCustomFieldsCustomization(), order, transactions));
+        saleOrder.setCustomFieldValues(prepareCustomFieldValues(configurationParameters.getCustomFieldsCustomization(), order, saleOrder, transactions));
         return saleOrder;
     }
 
@@ -433,7 +433,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return billingAddress == null ? null : ValidatorUtils.getValidMobileOrNull(billingAddress.getPhone());
     }
 
-    public List<CustomFieldValue> prepareCustomFieldValues(String customFieldsCustomization, Order order, List<Transaction> transactions) {
+    public List<CustomFieldValue> prepareCustomFieldValues(String customFieldsCustomization, Order order, SaleOrder saleOrder, List<Transaction> transactions) {
         List<CustomFieldValue> customFieldValues = new ArrayList<>();
         try {
             JsonElement customFieldsCustomizationJson = (JsonElement) JsonUtils.stringToJson(customFieldsCustomization);
@@ -441,6 +441,8 @@ public class BaseSaleOrderService implements ISaleOrderService {
             ScriptExecutionContext context = ScriptExecutionContext.current();
             context.addVariable("receiptJson", getReceipt(transactions));
             context.addVariable("saleOrderJson", JsonUtils.stringToJson(objectMapper.writeValueAsString(order)));
+            context.addVariable("channelOrder", order);
+            context.addVariable("saleOrder", saleOrder);
             for (JsonElement customFieldCustomization : customFieldsCustomizationsArray) {
                 JsonObject customFieldCustomizationObject = customFieldCustomization.getAsJsonObject();
                 for (String customFieldName : customFieldCustomizationObject.keySet()) {
@@ -454,6 +456,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                         LOG.info("Error evaluating expression. {}", e.getMessage());
                     } catch (Exception e) {
                         LOG.info("Error adding custom field with name : {} , {}", customFieldName, e.getMessage());
+                        e.printStackTrace();
                     }
                 }
             }
