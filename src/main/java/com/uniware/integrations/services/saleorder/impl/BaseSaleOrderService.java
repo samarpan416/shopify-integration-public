@@ -81,6 +81,10 @@ public class BaseSaleOrderService implements ISaleOrderService {
         }
     }
 
+    public enum UNIWARE_ORDER_ITEM_STATUS {
+        CANCELLED,RETURN_EXPECTED,DISPATCHED;
+    }
+
     static EnumMap<OrderState, Map<String, Object>> orderStateToRequestParams = getOrderStatusToRequestParams();
     Map<String, List<Transaction>> orderIdToTransactions = new HashMap<>();
 
@@ -943,26 +947,26 @@ public class BaseSaleOrderService implements ISaleOrderService {
 
     public ApiResponse<List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem>> orderStatusSync(String orderId, SaleOrderStatusSyncRequest saleOrderStatusSyncRequest) {
         LOG.info("orderId: {} , saleOrderStatusSyncRequest: {}", orderId, saleOrderStatusSyncRequest);
-        Map<String, String> soiCodeToUniwareStatusCode = orderStatusSyncInternal(orderId, saleOrderStatusSyncRequest.getStatusSyncSaleOrderItems(), saleOrderStatusSyncRequest.getShopifyOrderMetadata());
+        Map<String, UNIWARE_ORDER_ITEM_STATUS> soiCodeToUniwareStatusCode = orderStatusSyncInternal(orderId, saleOrderStatusSyncRequest.getStatusSyncSaleOrderItems(), saleOrderStatusSyncRequest.getShopifyOrderMetadata());
         List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem> wsSaleOrderItems = new ArrayList<>();
-        for (Map.Entry<String, String> soiCodeToUniwareStatusCodeEntry : soiCodeToUniwareStatusCode.entrySet()) {
+        for (Map.Entry<String, UNIWARE_ORDER_ITEM_STATUS> soiCodeToUniwareStatusCodeEntry : soiCodeToUniwareStatusCode.entrySet()) {
             String soiCode = soiCodeToUniwareStatusCodeEntry.getKey();
-            String uniwareStatus = soiCodeToUniwareStatusCodeEntry.getValue();
+            UNIWARE_ORDER_ITEM_STATUS uniwareStatus = soiCodeToUniwareStatusCodeEntry.getValue();
             PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem wsSaleOrderItem = new PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem();
             wsSaleOrderItem.setCode(soiCode);
-            wsSaleOrderItem.setStatusCode(uniwareStatus);
+            wsSaleOrderItem.setStatusCode(uniwareStatus.toString());
             wsSaleOrderItems.add(wsSaleOrderItem);
         }
         return ApiResponse.<List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem>>success().message("Status sync data prepared successfully").data(wsSaleOrderItems).build();
     }
 
     // Status sync
-    private Map<String, String> orderStatusSyncInternal(String orderId, List<StatusSyncSoi> statusSyncSoiList, ShopifyOrderMetadata shopifyOrderMetadata) {
-        HashMap<String, String> soiCodeToUniwareStatusCode = new HashMap<>();
-        if (shopifyOrderMetadata.isOrderCancelled()) {
+    private Map<String, UNIWARE_ORDER_ITEM_STATUS> orderStatusSyncInternal(String orderId, List<StatusSyncSoi> statusSyncSoiList, ShopifyOrderMetadata shopifyOrderMetadata) {
+        HashMap<String, UNIWARE_ORDER_ITEM_STATUS> soiCodeToUniwareStatusCode = new HashMap<>();
+        if (shopifyOrderMetadata.isCancelled()) {
             LOG.info("Marking order : {} as CANCELLED in uniware", orderId);
             statusSyncSoiList.forEach(statusSyncSoi -> {
-                if (statusSyncSoi.isCancellable()) soiCodeToUniwareStatusCode.put(statusSyncSoi.getCode(), "CANCELLED");
+                if (statusSyncSoi.isCancellable()) soiCodeToUniwareStatusCode.put(statusSyncSoi.getCode(), UNIWARE_ORDER_ITEM_STATUS.CANCELLED);
                 else LOG.info("Not marking {} as cancelled since it's not cancellable in UC", statusSyncSoi.getCode());
             });
         } else {
@@ -973,7 +977,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 doLineItemCancellation(lineItemId, lineItemMetadata, channelSoiCodeToData.get(lineItemId), soiCodeToUniwareStatusCode);
                 doLineItemCustomerReturn(lineItemId, lineItemMetadata, channelSoiCodeToData.get(lineItemId), soiCodeToUniwareStatusCode);
             }
-            doOrderDispatch(shopifyOrderMetadata, statusSyncSoiList, soiCodeToUniwareStatusCode);
+            doOrderDispatch(orderId, shopifyOrderMetadata, statusSyncSoiList, soiCodeToUniwareStatusCode);
         }
         return soiCodeToUniwareStatusCode;
     }
@@ -1034,7 +1038,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         }
     }
 
-    private void doLineItemCancellation(String lineItemId, LineItemMetadata lineItemMetadata, ChannelSoiData channelSoiData, HashMap<String, String> soiCodeToUniwareStatus) {
+    private void doLineItemCancellation(String lineItemId, LineItemMetadata lineItemMetadata, ChannelSoiData channelSoiData, HashMap<String, UNIWARE_ORDER_ITEM_STATUS> soiCodeToUniwareStatus) {
         int shopifyCancelledQty = lineItemMetadata.getCancelledQty();
         if (shopifyCancelledQty == 0) {
             LOG.info("No cancellation required for lineItemId : {} | shopifyCancelledQty : {}", lineItemId, shopifyCancelledQty);
@@ -1071,7 +1075,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                     LOG.info("bundleCode : {} , soiCountCancelledInBundle : {} , bundleSoiCodes size : {}", bundleCode, soiCodesToCancelInBundle.size(), statusSyncSois.size());
                     if (soiCodesToCancelInBundle.size() == statusSyncSois.size()) {
                         --qtyToCancelInUc;
-                        soiCodesToCancelInBundle.forEach(soiCode -> soiCodeToUniwareStatus.put(soiCode, "CANCELLED"));
+                        soiCodesToCancelInBundle.forEach(soiCode -> soiCodeToUniwareStatus.put(soiCode, UNIWARE_ORDER_ITEM_STATUS.CANCELLED));
                     }
                 }
             }
@@ -1089,7 +1093,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 if (qtyToCancelInUc == 0) break;
 
                 if (statusSyncSoi.isCancellable()) {
-                    soiCodeToUniwareStatus.put(statusSyncSoi.getCode(), "CANCELLED");
+                    soiCodeToUniwareStatus.put(statusSyncSoi.getCode(), UNIWARE_ORDER_ITEM_STATUS.CANCELLED);
                     --qtyToCancelInUc;
                 }
             }
@@ -1099,7 +1103,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         }
     }
 
-    private void doLineItemCustomerReturn(String lineItemId, LineItemMetadata lineItemMetadata, ChannelSoiData channelSoiData, HashMap<String, String> soiCodeToUniwareStatus) {
+    private void doLineItemCustomerReturn(String lineItemId, LineItemMetadata lineItemMetadata, ChannelSoiData channelSoiData, HashMap<String, UNIWARE_ORDER_ITEM_STATUS> soiCodeToUniwareStatus) {
         int shopifyReturnedQty = lineItemMetadata.getReturnedQty();
 
         if (shopifyReturnedQty == 0) {
@@ -1133,7 +1137,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 LOG.info("bundleCode : {} , soiCountReturnedInBundle : {} , bundleSoiCodes size : {}", bundleCode, soiCodesToReturnInBundle.size(), statusSyncSois.size());
                 if (soiCodesToReturnInBundle.size() == statusSyncSois.size()) {
                     --qtyToReturnInUc;
-                    soiCodesToReturnInBundle.forEach(soiCode -> soiCodeToUniwareStatus.put(soiCode, "RETURN_EXPECTED"));
+                    soiCodesToReturnInBundle.forEach(soiCode -> soiCodeToUniwareStatus.put(soiCode, UNIWARE_ORDER_ITEM_STATUS.RETURN_EXPECTED));
                 }
             }
         } else {
@@ -1141,7 +1145,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 if (qtyToReturnInUc == 0) break;
 
                 if (statusSyncSoi.isReversePickable()) {
-                    soiCodeToUniwareStatus.put(statusSyncSoi.getCode(), "RETURN_EXPECTED");
+                    soiCodeToUniwareStatus.put(statusSyncSoi.getCode(), UNIWARE_ORDER_ITEM_STATUS.RETURN_EXPECTED);
                     --qtyToReturnInUc;
                 }
             }
@@ -1153,9 +1157,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
     }
 
 
-    private void doOrderDispatch(ShopifyOrderMetadata shopifyOrderMetadata, List<StatusSyncSoi> statusSyncSois, HashMap<String, String> soiCodeToUniwareStatus) {
-        if (!shopifyOrderMetadata.isOrderFulfilled()) {
-            LOG.info("Skipping dispatch since fulfillmentStatus is {}", shopifyOrderMetadata.getFulfillmentStatus());
+    private void doOrderDispatch(String orderId, ShopifyOrderMetadata shopifyOrderMetadata, List<StatusSyncSoi> statusSyncSois, HashMap<String, UNIWARE_ORDER_ITEM_STATUS> soiCodeToUniwareStatus) {
+        if (!shopifyOrderMetadata.isFullfilled()) {
+            LOG.info("Skipping dispatch for {}", orderId);
             return;
         }
         // Backend can't handle cancelled and dispatched status together
@@ -1164,7 +1168,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         if (noItemCancelled) {
             statusSyncSois.forEach(statusSyncSoi -> {
                 if (!StringUtils.equalsAny(statusSyncSoi.getStatusCode(), "UNFULFILLABLE", "DISPATCHED", "DELIVERED", "REPLACED", "RESHIPPED", "CANCELLED", "LOCATION_NOT_SERVICEABLE")) {
-                    soiCodeToUniwareStatus.put(statusSyncSoi.getCode(), "DISPATCHED");
+                    soiCodeToUniwareStatus.put(statusSyncSoi.getCode(), UNIWARE_ORDER_ITEM_STATUS.DISPATCHED);
                     LOG.info("Marking soi : {} as DISPATCHED | UC statusCode : {}", statusSyncSoi.getCode(), statusSyncSoi.getStatusCode());
                 } else {
                     LOG.info("Not marking soi : {} as DISPATCHED since UC statusCode is {}", statusSyncSoi.getCode(), statusSyncSoi.getStatusCode());
@@ -1212,12 +1216,14 @@ public class BaseSaleOrderService implements ISaleOrderService {
         Order.FulfillmentStatus fulfillmentStatus = order.getFulfillmentStatus();
         Order.FinancialStatus financialStatus = order.getFinancialStatus();
         ShopifyOrderMetadata shopifyOrderMetadata = new ShopifyOrderMetadata();
-        boolean isOrderCancelled = order.getCancelledAt() != null;
-        shopifyOrderMetadata.setOrderCancelled(isOrderCancelled);
-        if (isOrderCancelled) LOG.info("Order : {} is cancelled on Shopify", saleOrderCode);
+        boolean isOrderCancelled = order.getCancelledAt() != null;        
+        if (isOrderCancelled) {
+            shopifyOrderMetadata.setStatus(UNIWARE_ORDER_ITEM_STATUS.CANCELLED);
+            LOG.info("Order : {} is cancelled on Shopify", saleOrderCode);
+        }
         else {
             if (Order.FulfillmentStatus.FULFILLED.equals(fulfillmentStatus))
-                shopifyOrderMetadata.setFulfillmentStatus(fulfillmentStatus.toString());
+                shopifyOrderMetadata.setStatus(UNIWARE_ORDER_ITEM_STATUS.DISPATCHED);
             if (financialStatus != null && StringUtils.equalsAny(financialStatus, Order.FinancialStatus.PARTIALLY_REFUNDED, Order.FinancialStatus.REFUNDED)) {
                 Map<String, LineItemMetadata> lineItemIdToMetadata = shopifyOrderMetadata.getLineItemIdToMetadata();
                 updateLineItemMetadata(order.getRefunds(), lineItemIdToMetadata);
