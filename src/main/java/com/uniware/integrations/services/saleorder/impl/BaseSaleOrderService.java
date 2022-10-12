@@ -936,8 +936,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         orderStateToRequestParams.put(OrderState.FULFILLED, fulfilledQueryParams);
 
         Map<String, Object> unfulfilledQueryParams = new HashMap<>();
-        fulfilledQueryParams.put(QueryParamNames.FULFILLMENT_STATUS.toString(), "unfulfilled");
-        fulfilledQueryParams.put(QueryParamNames.FIELDS.toString(), responseFields);
+        unfulfilledQueryParams.put(QueryParamNames.FULFILLMENT_STATUS.toString(), "unfulfilled");
         orderStateToRequestParams.put(OrderState.UNFULFILLED, unfulfilledQueryParams);
         return orderStateToRequestParams;
     }
