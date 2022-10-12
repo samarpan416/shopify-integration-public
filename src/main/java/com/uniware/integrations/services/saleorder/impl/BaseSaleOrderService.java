@@ -126,9 +126,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
 
 
     @Override
-    public ResponseEntity<ApiResponse<Map<String, SaleOrder>>> getSaleOrders(LocalDate from, LocalDate to, String pageSize, String pageInfo, GetSaleOrdersRequest getSaleOrdersRequest) {
+    public ResponseEntity<ApiResponse<Map<String, SaleOrder>>> getSaleOrders(LocalDate from, LocalDate to, String pageSize, String pageInfo, GetSaleOrdersRequest getSaleOrdersRequest) throws BadRequest {
         validateRequestParams(from, to, pageSize);
-        validateGetSaleOrdersRequest(getSaleOrdersRequest);
+        getSaleOrdersRequest.validate();
         Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, pageInfo, orderStateToRequestParams.get(OrderState.UNFULFILLED));
         String nextPageInfo = paginatedOrders.getFirst();
 
@@ -147,18 +147,6 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 LOG.info("Skipping order {}", order.getId());
         }
         return ResponseEntity.ok().headers(responseHeaders).body(ApiResponse.<Map<String, SaleOrder>>success().message("Orders fetched successfully").data(saleOrderIdToWsSaleOrder).build());
-    }
-
-    private void validateGetSaleOrdersRequest(GetSaleOrdersRequest getSaleOrdersRequest) {
-        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
-        Set<ConstraintViolation<GetSaleOrdersRequest>> validate = validator.validate(getSaleOrdersRequest);
-        if (!validate.isEmpty()) {
-            List<ApiError> errors = new ArrayList<>();
-            validate.forEach(e -> {
-                errors.add(new ApiError(e.getPropertyPath().toString(), e.getMessage()));
-            });
-            throw BadRequest.builder().message("Invalid request body").errors(errors).build();
-        }
     }
 
     private void validateRequestParams(LocalDate from, LocalDate to, String pageSize) {
@@ -318,20 +306,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return ApiResponse.<Location>success().message("Location fetched successfully").data(location).build();
     }
 
-    private void validateConnectorParameters(ConnectorParameters connectorParameters) {
-        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
-        Set<ConstraintViolation<ConnectorParameters>> validate = validator.validate(connectorParameters);
-        if (!validate.isEmpty()) {
-            List<ApiError> errors = new ArrayList<>();
-            validate.forEach(e -> {
-                errors.add(new ApiError(e.getPropertyPath().toString(), e.getMessage()));
-            });
-            throw BadRequest.builder().message("Invalid request body").errors(errors).build();
-        }
-    }
-
-    public ApiResponse<Object> verifyConnectors(ConnectorParameters connectorParameters) {
-        validateConnectorParameters(connectorParameters);
+    public ApiResponse<Object> verifyConnectors(VerifyConnectorsRequest verifyConnectorsRequest) throws BadRequest {
+        verifyConnectorsRequest.validate();
+        ConnectorParameters connectorParameters = verifyConnectorsRequest.getConnectorParameters();
         String locationId = connectorParameters.getLocationId();
         Location location = getLocation(locationId);
         if (location == null) {
@@ -375,26 +352,10 @@ public class BaseSaleOrderService implements ISaleOrderService {
 //        return stringToJsonUtil(json,typeOfT);
     }
 
-    private void validateGetWsSaleOrderRequest(GetWsSaleOrderRequest getWsSaleOrderRequest) {
-        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
-        Set<ConstraintViolation<GetWsSaleOrderRequest>> validate = validator.validate(getWsSaleOrderRequest);
-        if (!validate.isEmpty()) {
-            List<ApiError> errors = new ArrayList<>();
-            validate.forEach(e -> {
-                errors.add(new ApiError(e.getPropertyPath().toString(), e.getMessage()));
-            });
-            throw BadRequest.builder().message("Invalid request body").errors(errors).build();
-        }
-        List<ApiError> validationErrors = getWsSaleOrderRequest.getOrder().validate();
-        if (!validationErrors.isEmpty()) {
-            throw BadRequest.builder().errors(validationErrors).message("Invalid order").build();
-        }
-    }
-
-    public ApiResponse<SaleOrder> getWsSaleOrder(GetWsSaleOrderRequest getWsSaleOrderRequest) {
+    public ApiResponse<SaleOrder> getWsSaleOrder(GetWsSaleOrderRequest getWsSaleOrderRequest) throws BadRequest {
         LOG.info("getWsSaleOrderRequest: {}", getWsSaleOrderRequest);
 
-        validateGetWsSaleOrderRequest(getWsSaleOrderRequest);
+        getWsSaleOrderRequest.validate();
 
         Order order = getWsSaleOrderRequest.getOrder();
 

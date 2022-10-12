@@ -1,16 +1,13 @@
 package com.uniware.integrations.dto;
 
-import lombok.Data;
-
 import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
 
+import lombok.Data;
+
 @Data
-public class GetSaleOrdersRequest extends ServiceRequest {
+public class VerifyConnectorsRequest extends ServiceRequest {
     @NotNull
     @Valid
     private ConnectorParameters connectorParameters;
-    @NotNull
-    @Valid
-    private ConfigurationParameters configurationParameters;
 }
