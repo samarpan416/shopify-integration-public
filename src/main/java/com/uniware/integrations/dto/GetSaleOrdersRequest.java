@@ -13,4 +13,7 @@ public class GetSaleOrdersRequest extends ServiceRequest {
     @NotNull
     @Valid
     private ConfigurationParameters configurationParameters;
+    @NotNull
+    @Valid
+    private TenantSpecificConfigurations tenantSpecificConfigurations;
 }

@@ -21,6 +21,8 @@ public class GetWsSaleOrderRequest extends ServiceRequest {
     ConfigurationParameters configurationParameters;
     @NotNull @Valid
     ConnectorParameters connectorParameters;
+    @NotNull @Valid
+    TenantSpecificConfigurations tenantSpecificConfigurations;
 
     @Override
     public void validate() throws BadRequest {
