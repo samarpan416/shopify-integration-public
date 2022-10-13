@@ -72,9 +72,9 @@ public class ShopifyController {
     }
 
     @GetMapping(value = "/orders/status-sync/metadata", produces = "application/json")
-    public @ResponseBody ApiResponse<Map<String, ShopifyOrderMetadata>> statusSyncMetadata(@RequestParam(defaultValue = PAGE_SIZE) String pageSize, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+    public @ResponseBody ResponseEntity<ApiResponse<Map<String, ShopifyOrderMetadata>>> statusSyncMetadata(@RequestParam(defaultValue = PAGE_SIZE) String pageSize, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from, @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to, @RequestParam(required = false,defaultValue = "0") int status, @RequestParam(required = false) String pageInfo) {
         ISaleOrderService saleOrderService = saleOrderServiceFactory.getService(ShopifyRequestContext.current().getTenantCode());
-        return saleOrderService.statusSyncMetadata(from, to, pageSize);
+        return saleOrderService.statusSyncMetadata(from, to, pageSize, status, pageInfo);
     }
 
     @PostMapping(value = "/orders/{id}/status-sync", produces = "application/json")

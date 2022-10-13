@@ -64,6 +64,8 @@ public class BaseSaleOrderService implements ISaleOrderService {
     private static final String DEFAULT_PHONE = "9999999999";
     public static final String SHIPPING_METHOD_CODE = "STD";
     public static final String PRINTABLE_CHARACTERS_REGEX = "\\P{Print}";
+    ORDER_STATE[] orderStatesToSync = {ORDER_STATE.REFUNDED, ORDER_STATE.PARTIALLY_REFUNDED, ORDER_STATE.CANCELLED, ORDER_STATE.FULFILLED};
+
 //    public static final String SERVICE_HOSTNAME = getHostname();
 
     private static final ObjectMapper objectMapper = getObjectMapper();
@@ -168,6 +170,15 @@ public class BaseSaleOrderService implements ISaleOrderService {
         apiErrors.addAll(validateDateRange(from, to));
         if (!apiErrors.isEmpty())
             throw BadRequest.builder().message("Invalid request param(s)").errors(apiErrors).build();
+    }
+
+    private void validateStatusSyncMetadataQueryParams(LocalDate from, LocalDate to, String pageSize, int status) {
+        validateRequestParams(from, to, pageSize);
+        int totalOrderStatesToSync = orderStatesToSync.length;
+        if(status < 0 || status >= totalOrderStatesToSync) {
+            ApiError apiError = new ApiError("status", "should be in the range 0-" + (totalOrderStatesToSync - 1));
+            throw BadRequest.builder().message("Invalid request param(s)").errors(Arrays.asList(apiError)).build();
+        }
     }
 
     private List<String> getMissingAccessScopes() {
@@ -1171,32 +1182,35 @@ public class BaseSaleOrderService implements ISaleOrderService {
         }
     }
 
-    public ApiResponse<Map<String, ShopifyOrderMetadata>> statusSyncMetadata(LocalDate from, LocalDate to, String pageSize) {
-        validateRequestParams(from, to, pageSize);
+    public ResponseEntity<ApiResponse<Map<String, ShopifyOrderMetadata>>> statusSyncMetadata(LocalDate from, LocalDate to, String pageSize, int status, String pageInfo) {
+        validateStatusSyncMetadataQueryParams(from, to, pageSize, status);
         Map<String, ShopifyOrderMetadata> saleOrderCodeToMetadata = new HashMap<>();
-        List<ORDER_STATE> orderStatesToSync = new ArrayList<>();
-        orderStatesToSync.add(ORDER_STATE.REFUNDED);
-        orderStatesToSync.add(ORDER_STATE.PARTIALLY_REFUNDED);
-        orderStatesToSync.add(ORDER_STATE.CANCELLED);
-        orderStatesToSync.add(ORDER_STATE.FULFILLED);
-        for (ORDER_STATE orderState : orderStatesToSync) {
-            String nextPageInfo = null;
-            do {
-                Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, nextPageInfo, orderStateToRequestParams.get(orderState));
-                nextPageInfo = paginatedOrders.getFirst();
-                List<Order> orders = paginatedOrders.getSecond();
-                orders.forEach(order -> {
-                    String saleOrderCode = order.getId().toString();
+        
+        ORDER_STATE orderState = orderStatesToSync[status];
+        Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, pageInfo, orderStateToRequestParams.get(orderState));
+        String nextPageInfo = paginatedOrders.getFirst();
+        List<Order> orders = paginatedOrders.getSecond();
+        orders.forEach(order -> {
+            String saleOrderCode = order.getId().toString();
 
-                    if (saleOrderCodeToMetadata.containsKey(saleOrderCode)) {
-                        LOG.info("Skipping sale order {} since it has already been handled", saleOrderCode);
-                    } else {
-                        saleOrderCodeToMetadata.put(saleOrderCode, getShopifyOrderMetadata(order));
-                    }
-                });
-            } while (StringUtils.isNotBlank(nextPageInfo));
+            if (saleOrderCodeToMetadata.containsKey(saleOrderCode)) {
+                LOG.warn("Skipping sale order {} since it has already been handled", saleOrderCode);
+            } else {
+                saleOrderCodeToMetadata.put(saleOrderCode, getShopifyOrderMetadata(order));
+            }
+        });
+        HttpHeaders responseHeaders = new HttpHeaders();
+        if(StringUtils.isNotBlank(nextPageInfo)) {
+            String nextPageUrl = SERVICE_HOSTNAME + "/shopify/orders/status-sync/metadata" + "?status=" + status + "&pageInfo=" + nextPageInfo;
+            responseHeaders.set("Link", nextPageUrl);
+        } else {
+            if(status < orderStatesToSync.length - 1) {
+                String nextPageUrl = SERVICE_HOSTNAME + "/shopify/orders/status-sync/metadata" + "?status=" + (status + 1);
+                responseHeaders.set("Link", nextPageUrl);
+            }
         }
-        return ApiResponse.<Map<String, ShopifyOrderMetadata>>success().data(saleOrderCodeToMetadata).message("Successfully fetched orders metadata").build();
+        ApiResponse<Map<String, ShopifyOrderMetadata>> apiResponse = ApiResponse.<Map<String, ShopifyOrderMetadata>>success().data(saleOrderCodeToMetadata).message("Successfully fetched orders metadata").build();
+        return ResponseEntity.ok().headers(responseHeaders).body(apiResponse);
     }
 
     public ShopifyOrderMetadata getShopifyOrderMetadata(String id) {

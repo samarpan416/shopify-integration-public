@@ -23,7 +23,8 @@ public interface ISaleOrderService {
     SPLIT_SHIPMENT_CONDITION getSplitShipmentCondition(ConfigurationParameters configurationParameters);
     Object orderReconciliation(LocalDate from, LocalDate to, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
     ResponseEntity<List<Pendency>> getPendencies(LocalDate from, LocalDate to, String pageSize, String pageInfo);
-    ApiResponse<Map<String, ShopifyOrderMetadata>> statusSyncMetadata(LocalDate from, LocalDate to, String pageSize);
+//    List<Transaction> getOrderTransactions(String id);
+    ResponseEntity<ApiResponse<Map<String, ShopifyOrderMetadata>>> statusSyncMetadata(LocalDate from, LocalDate to, String pageSize, int status, String pageInfo);
     ApiResponse<List<PushSaleOrderStatusRequest.WsSaleOrder.WsSaleOrderItem>> orderStatusSync(String orderId, SaleOrderStatusSyncRequest saleOrderStatusSyncRequest);
     String getPincodeDetails(String pincode);
     ApiResponse<CreateSaleOrderRequest> getCreateSaleOrderRequest(String orderId);
