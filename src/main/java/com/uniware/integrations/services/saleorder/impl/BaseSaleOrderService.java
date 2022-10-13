@@ -92,7 +92,8 @@ public class BaseSaleOrderService implements ISaleOrderService {
     public enum SPLIT_SHIPMENT_CONDITION {
         DOMESTIC,
         CUSTOM,
-        FULFILLMENT
+        FULFILLMENT,
+        FALSE
     }
 
     static EnumMap<ORDER_STATE, Map<String, Object>> orderStateToRequestParams = getOrderStatusToRequestParams();
