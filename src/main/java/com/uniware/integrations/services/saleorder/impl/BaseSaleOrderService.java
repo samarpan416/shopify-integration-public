@@ -153,7 +153,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 continue;
             }
             if (shouldFetchOrder(order, getSaleOrdersRequest.getConfigurationParameters(), getSaleOrdersRequest.getConnectorParameters()))
-                saleOrderIdToWsSaleOrder.put(order.getId().toString(), prepareSaleOrder(order, getSaleOrdersRequest.getConfigurationParameters(), getSaleOrdersRequest.getConnectorParameters()));
+                saleOrderIdToWsSaleOrder.put(order.getId().toString(), prepareSaleOrder(order, getSaleOrdersRequest.getConfigurationParameters(), getSaleOrdersRequest.getConnectorParameters(), getSaleOrdersRequest.getTenantSpecificConfigurations()));
             else
                 LOG.info("Skipping order {}", order.getId());
         }
@@ -345,7 +345,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
     @Override
     public CreateSaleOrderRequest prepareCreateSaleOrderRequest(Order order) {
         CreateSaleOrderRequest createSaleOrderRequest = new CreateSaleOrderRequest();
-        createSaleOrderRequest.setSaleOrder(prepareSaleOrder(order, null, null));
+        createSaleOrderRequest.setSaleOrder(prepareSaleOrder(order, null, null, null));
         return createSaleOrderRequest;
     }
 
@@ -370,7 +370,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
 
         Order order = getWsSaleOrderRequest.getOrder();
 
-        return ApiResponse.<SaleOrder>success().message("WsSaleOrder created successfully").data(prepareSaleOrder(order, getWsSaleOrderRequest.getConfigurationParameters(), getWsSaleOrderRequest.getConnectorParameters())).build();
+        return ApiResponse.<SaleOrder>success().message("WsSaleOrder created successfully").data(prepareSaleOrder(order, getWsSaleOrderRequest.getConfigurationParameters(), getWsSaleOrderRequest.getConnectorParameters(), getWsSaleOrderRequest.getTenantSpecificConfigurations())).build();
     }
 
     protected List<Transaction> getTransactions(Order order) {
@@ -390,7 +390,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return graphQLResponse.getData().getOrder() == null ? null : graphQLResponse.getData().getOrder().getTransactions();
     }
 
-    public SaleOrder prepareSaleOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters) {
+    public SaleOrder prepareSaleOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters, TenantSpecificConfigurations tenantSpecificConfigurations) {
         SaleOrder saleOrder = new SaleOrder();
         String orderId = order.getId().toString();
         saleOrder.setCode(orderId);
@@ -424,7 +424,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrder.setAddresses(prepareAddresses(order, configurationParameters.isStateCodeRequired()));
         saleOrder.setBillingAddress(new BillingAddress("1"));
         saleOrder.setShippingAddress(new ShippingAddress(String.valueOf(saleOrder.getAddresses().size())));
-        saleOrder.setSaleOrderItems(prepareSaleOrderItems(order,configurationParameters));
+        saleOrder.setSaleOrderItems(prepareSaleOrderItems(order, configurationParameters, tenantSpecificConfigurations));
         saleOrder.setCustomFieldValues(prepareCustomFieldValues(configurationParameters.getCustomFieldsCustomization(), order, saleOrder, transactions));
         return saleOrder;
     }
@@ -480,7 +480,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return receiptJson;
     }
 
-    private SaleOrderItem prepareSaleOrderItem(Order order, LineItem lineItem, String code, int packetNumberForItem, BigDecimal itemTax) {
+    private SaleOrderItem prepareSaleOrderItem(Order order, LineItem lineItem, String code, int packetNumberForItem, BigDecimal itemTax, TenantSpecificConfigurations tenantSpecificConfigurations) {
         SaleOrderItem saleOrderItem = new SaleOrderItem();
         saleOrderItem.setCode(code);
         saleOrderItem.setChannelSaleOrderItemCode(prepareChannelSaleOrderItemCode(lineItem));
@@ -489,7 +489,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrderItem.setItemName(prepareItemName(lineItem));
         saleOrderItem.setShippingMethodCode(SHIPPING_METHOD_CODE);
         saleOrderItem.setGiftMessage(prepareGiftMessage(lineItem));
-        BigDecimal itemDiscount = prepareDiscount(order, lineItem);
+        BigDecimal itemDiscount = prepareDiscount(order, lineItem, tenantSpecificConfigurations);
         BigDecimal sellingPrice = prepareSellingPrice(lineItem, itemDiscount, itemTax);
         saleOrderItem.setDiscount(itemDiscount);
         saleOrderItem.setTotalPrice(sellingPrice);
@@ -545,26 +545,13 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return sellingPrice.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : sellingPrice;
     }
 
-    private String[] getPrepaidDiscountCodes(String hostname) {
-        String shopName = getShopName(hostname);
-        // Fetch from mongodb
-        if("rarerabbit".equals(shopName))
-            return new String[]{"FLITS"};
-        else return new String[0];
-    }
-
-    private String getShopName(String hostname) {
-        if(hostname == null) return null;
-        return hostname.split("\\.")[0];
-    }
-
-    public BigDecimal prepareDiscount(Order order, LineItem lineItem) {
+    public BigDecimal prepareDiscount(Order order, LineItem lineItem, TenantSpecificConfigurations tenantSpecificConfigurations) {
         BigDecimal lineItemDiscount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
-        String[] prepaidDiscountCodes = getPrepaidDiscountCodes(ShopifyRequestContext.current().getHostname());
+        String[] discountCodesWithPrepaidAmount = tenantSpecificConfigurations.getDiscountCodesWithPrepaidAmount();
         for (DiscountAllocation discountAllocation : lineItem.getDiscountAllocations()) {
             DiscountApplication discountApplication = order.getDiscountApplications().get(discountAllocation.getDiscountApplicationIndex());
             BigDecimal discountAllocationAmount = new BigDecimal(discountAllocation.getAmount());
-            if (ShopifyUtils.containsAnyIgnoreCase(discountApplication.getCode(), prepaidDiscountCodes)) {
+            if (ShopifyUtils.containsAnyIgnoreCase(discountApplication.getCode(), discountCodesWithPrepaidAmount)) {
                 order.addPrepaidDiscountCodeAmount(discountAllocationAmount);
             } else {
                 lineItemDiscount = lineItemDiscount.add(discountAllocationAmount);
@@ -578,7 +565,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return "placeholder";
     }
 
-    private List<SaleOrderItem> prepareSaleOrderItems(Order order, ConfigurationParameters configurationParameters) {
+    private List<SaleOrderItem> prepareSaleOrderItems(Order order, ConfigurationParameters configurationParameters, TenantSpecificConfigurations tenantSpecificConfigurations) {
         List<SaleOrderItem> saleOrderItems = new ArrayList<>();
         LinkedHashMap<String, Integer> boxIdToPacketNumberMap = new LinkedHashMap<>();
         int totalPackets = 1;
@@ -589,20 +576,19 @@ public class BaseSaleOrderService implements ISaleOrderService {
             if (lineItem.getQuantity() > 0) {
                 int qty = lineItem.getQuantity();
                 String channelSaleOrderItemCode = prepareChannelSaleOrderItemCode(lineItem);
-                Pair<Integer, Integer> packetInfo = getPacketInfo(lineItem, countryCode, totalPackets, boxIdToPacketNumberMap,configurationParameters);
+                Pair<Integer, Integer> packetInfo = getPacketInfo(lineItem, countryCode, totalPackets, boxIdToPacketNumberMap, configurationParameters);
                 totalPackets = packetInfo.getFirst();
                 int packetNumberForItem = packetInfo.getSecond();
                 // TODO : Can't we just pass id-count both
                 BigDecimal lineItemTaxPerQty = order.isTaxesIncluded() ? BigDecimal.ZERO : getLineItemTaxPerQty(lineItem, qty);
                 if (qty == 1) {
-                    saleOrderItems.add(prepareSaleOrderItem(order, lineItem, channelSaleOrderItemCode, packetNumberForItem, lineItemTaxPerQty));
-                    Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem,configurationParameters);
+                    saleOrderItems.add(prepareSaleOrderItem(order, lineItem, channelSaleOrderItemCode, packetNumberForItem, lineItemTaxPerQty, tenantSpecificConfigurations));
+                    Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem, configurationParameters);
                     totalPackets = updatedPacketInfo.getFirst();
-                    packetNumberForItem = updatedPacketInfo.getSecond();
                 } else {
                     for (int itemCount = 0; itemCount < qty; ++itemCount) {
                         String soiCode = channelSaleOrderItemCode + '-' + itemCount;
-                        saleOrderItems.add(prepareSaleOrderItem(order, lineItem, soiCode, packetNumberForItem, lineItemTaxPerQty));
+                        saleOrderItems.add(prepareSaleOrderItem(order, lineItem, soiCode, packetNumberForItem, lineItemTaxPerQty, tenantSpecificConfigurations));
                         Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem, configurationParameters);
                         totalPackets = updatedPacketInfo.getFirst();
                         packetNumberForItem = updatedPacketInfo.getSecond();

@@ -32,7 +32,7 @@ public interface ISaleOrderService {
     ApiResponse<Object> verifyConnectors(ConnectorVerificationRequest verifyConnectorsRequest);
     ShopifyOrderMetadata getShopifyOrderMetadata(String id);
     BigDecimal getPrepaidAmount(Order order, BigDecimal shippingCharges, BigDecimal giftDiscount);
-    BigDecimal prepareDiscount(Order order, LineItem lineItem);
+    BigDecimal prepareDiscount(Order order, LineItem lineItem, TenantSpecificConfigurations tenantSpecificConfigurations);
     boolean shouldFetchOrder(Order order, ConfigurationParameters configurationParameters, ConnectorParameters connectorParameters);
     String getPaymentMode(Order order);
 }
