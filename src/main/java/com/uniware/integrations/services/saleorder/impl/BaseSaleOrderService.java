@@ -16,6 +16,7 @@ import com.uniware.integrations.dto.*;
 import com.unifier.core.utils.StringUtils;
 import com.uniware.integrations.dto.shopify.*;
 import com.uniware.integrations.dto.shopify.ShopifyAddress;
+import com.uniware.integrations.dto.shopify.Order.FinancialStatus;
 import com.uniware.integrations.exception.BadRequest;
 import com.uniware.integrations.services.saleorder.ISaleOrderService;
 import com.uniware.integrations.uniware.dto.saleOrder.request.*;
@@ -559,6 +560,21 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return null;
     }
 
+    private BigDecimal preparePartiallyPaidAmount(Order order) {
+        List<Transaction> transactions = getTransactions(order);
+        BigDecimal partiallyPaidAmount = BigDecimal.ZERO.setScale(2);
+        if(transactions == null)
+            return partiallyPaidAmount;
+
+        for(Transaction transaction: transactions) {
+            if("SUCCESS".equalsIgnoreCase(transaction.getStatus()) && "partially_paid".equals(transaction.getGateway())) {
+                BigDecimal transactionAmount = new BigDecimal(transaction.getAmountSet().getShopMoney().getAmount());
+                partiallyPaidAmount = partiallyPaidAmount.add(transactionAmount);
+            }
+        }
+        return partiallyPaidAmount;
+    }
+
     private BigDecimal prepareSellingPrice(LineItem lineItem, BigDecimal itemDiscount, BigDecimal itemTax) {
         BigDecimal lineItemPrice = new BigDecimal(lineItem.getPrice());
         BigDecimal sellingPrice = lineItemPrice.add(itemTax).subtract(itemDiscount).setScale(2, RoundingMode.HALF_EVEN);
@@ -779,6 +795,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         
         // Only being used by rarerabbit
         prepaidAmount = prepaidAmount.add(order.getPrepaidDiscountCodeAmount());
+        prepaidAmount = prepaidAmount.add(preparePartiallyPaidAmount(order));
         return prepaidAmount;
     }
 
@@ -856,6 +873,26 @@ public class BaseSaleOrderService implements ISaleOrderService {
             return false;
         }
 
+        if(Order.FinancialStatus.PARTIALLY_PAID.equals(order.getFinancialStatus())){
+            boolean partiallyPaidTransactionFound = false;
+            boolean giftDiscountTransactionFound = false;
+            List<Transaction> transactions = getTransactions(order);
+
+            for(Transaction transaction: transactions) {
+                if("SUCCESS".equalsIgnoreCase(transaction.getStatus())) {
+                    String transactionGateway = transaction.getGateway();
+                    if("partially_paid".equals(transactionGateway))
+                        partiallyPaidTransactionFound = true;
+                    if("gift_card".equalsIgnoreCase(transactionGateway))
+                        giftDiscountTransactionFound = true;
+                }
+            }
+            if(!giftDiscountTransactionFound && !partiallyPaidTransactionFound) {
+                LOG.info("Skipping order {} since no transaction found with gateway partially_paid or gift_card", order.getId());
+                return false;
+            }
+        }
+
         String paymentMode = getPaymentMode(order);
         if ("prepaid".equals(paymentMode) && !Order.FinancialStatus.PAID.equals(order.getFinancialStatus())) {
             LOG.info("Order {} | Invalid financialStatus {} | paymentMode {}", order.getId(), order.getFinancialStatus(), paymentMode);
@@ -898,6 +935,10 @@ public class BaseSaleOrderService implements ISaleOrderService {
     }
 
     public String getPaymentMode(Order order) {
+        if(FinancialStatus.PARTIALLY_PAID.equals(order.getFinancialStatus())) {
+            return "cod";
+        }
+
         List<Transaction> transactions = getTransactions(order);
         String paymentMode = "prepaid";
 
