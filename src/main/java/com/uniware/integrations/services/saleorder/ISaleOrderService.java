@@ -30,6 +30,6 @@ public interface ISaleOrderService {
     ApiResponse<CreateSaleOrderRequest> getCreateSaleOrderRequest(String orderId);
     ApiResponse<SaleOrder> getWsSaleOrder(GetWsSaleOrderRequest getWsSaleOrderRequest);
     ApiResponse<Location> getLocationById(String id);
-    ApiResponse<Object> verifyConnectors(VerifyConnectorsRequest verifyConnectorsRequest);
+    ApiResponse<Object> verifyConnectors(ConnectorVerificationRequest verifyConnectorsRequest);
     ShopifyOrderMetadata getShopifyOrderMetadata(String id);
 }

@@ -306,9 +306,9 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return ApiResponse.<Location>success().message("Location fetched successfully").data(location).build();
     }
 
-    public ApiResponse<Object> verifyConnectors(VerifyConnectorsRequest verifyConnectorsRequest) throws BadRequest {
-        verifyConnectorsRequest.validate();
-        ConnectorParameters connectorParameters = verifyConnectorsRequest.getConnectorParameters();
+    public ApiResponse<Object> verifyConnectors(ConnectorVerificationRequest connectorVerificationRequest) throws BadRequest {
+        connectorVerificationRequest.validate();
+        ConnectorParameters connectorParameters = connectorVerificationRequest.getConnectorParameters();
         String locationId = connectorParameters.getLocationId();
         Location location = getLocation(locationId);
         if (location == null) {

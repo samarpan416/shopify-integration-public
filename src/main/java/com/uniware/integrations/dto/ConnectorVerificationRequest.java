@@ -6,7 +6,7 @@ import javax.validation.constraints.NotNull;
 import lombok.Data;
 
 @Data
-public class VerifyConnectorsRequest extends ServiceRequest {
+public class ConnectorVerificationRequest extends ServiceRequest {
     @NotNull
     @Valid
     private ConnectorParameters connectorParameters;

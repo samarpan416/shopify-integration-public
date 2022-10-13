@@ -108,7 +108,7 @@ public class ShopifyController {
     }
 
     @PostMapping(value = "/connectors/verify", produces = "application/json")
-    public @ResponseBody ApiResponse<Object> verifyconnectors(@RequestBody VerifyConnectorsRequest verifyConnectorsRequest) {
+    public @ResponseBody ApiResponse<Object> verifyconnectors(@RequestBody ConnectorVerificationRequest verifyConnectorsRequest) {
         ISaleOrderService saleOrderService = saleOrderServiceFactory.getService(ShopifyRequestContext.current().getTenantCode());
         return saleOrderService.verifyConnectors(verifyConnectorsRequest);
     }
