@@ -140,7 +140,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
 
     @Override
     public ResponseEntity<ApiResponse<Map<String, SaleOrder>>> getSaleOrders(LocalDate from, LocalDate to, String pageSize, String pageInfo, GetSaleOrdersRequest getSaleOrdersRequest) throws BadRequest {
-        validateRequestParams(from, to, pageSize);
+        validateGetOrdersRequestParams(from, to, pageSize);
         getSaleOrdersRequest.validate();
         Pair<String, List<Order>> paginatedOrders = getSaleOrdersInternal(from, to, pageSize, pageInfo, orderStateToRequestParams.get(ORDER_STATE.UNFULFILLED));
         String nextPageInfo = paginatedOrders.getFirst();
@@ -162,23 +162,33 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return ResponseEntity.ok().headers(responseHeaders).body(ApiResponse.<Map<String, SaleOrder>>success().message("Orders fetched successfully").data(saleOrderIdToWsSaleOrder).build());
     }
 
-    private void validateRequestParams(LocalDate from, LocalDate to, String pageSize) {
+    private List<ApiError> validatePageSize(String pageSize) {
         List<ApiError> apiErrors = new ArrayList<>();
-
         if (!NumberUtils.isNumber(pageSize))
             apiErrors.add(new ApiError("pageSize", "should be a number"));
+        else if(NumberUtils.toInt(pageSize) < 1 || NumberUtils.toInt(pageSize) > NumberUtils.toInt(PAGE_SIZE))
+            apiErrors.add(new ApiError("pageSize", "should be in the range 1-" + PAGE_SIZE));
+        return apiErrors;
+    }
+
+    private void validateGetOrdersRequestParams(LocalDate from, LocalDate to, String pageSize) {
+        List<ApiError> apiErrors = new ArrayList<>();
+        apiErrors.addAll(validatePageSize(pageSize));
         apiErrors.addAll(validateDateRange(from, to));
         if (!apiErrors.isEmpty())
             throw BadRequest.builder().message("Invalid request param(s)").errors(apiErrors).build();
     }
 
     private void validateStatusSyncMetadataQueryParams(LocalDate from, LocalDate to, String pageSize, int status) {
-        validateRequestParams(from, to, pageSize);
+        List<ApiError> apiErrors = new ArrayList<>();
+        apiErrors.addAll(validatePageSize(pageSize));
+        apiErrors.addAll(validateDateRange(from, to));
         int totalOrderStatesToSync = orderStatesToSync.length;
         if(status < 0 || status >= totalOrderStatesToSync) {
-            ApiError apiError = new ApiError("status", "should be in the range 0-" + (totalOrderStatesToSync - 1));
-            throw BadRequest.builder().message("Invalid request param(s)").errors(Arrays.asList(apiError)).build();
+            apiErrors.add(new ApiError("status", "should be in the range 0-" + (totalOrderStatesToSync - 1)));
         }
+        if (!apiErrors.isEmpty())
+            throw BadRequest.builder().message("Invalid request param(s)").errors(apiErrors).build();
     }
 
     private List<String> getMissingAccessScopes() {
@@ -233,7 +243,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
     }
 
     public ResponseEntity<List<Pendency>> getPendencies(LocalDate from, LocalDate to, String pageSize, String pageInfo) {
-        validateRequestParams(from, to, pageSize);
+        validateGetOrdersRequestParams(from, to, pageSize);
         Pair<String, List<Order>> paginatedOrders = null;
         List<Order> pendencyOrders = null;
         String currentPageInfo = pageInfo;
