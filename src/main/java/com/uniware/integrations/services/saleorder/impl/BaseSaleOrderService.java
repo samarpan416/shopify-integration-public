@@ -480,7 +480,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return receiptJson;
     }
 
-    private SaleOrderItem prepareSaleOrderItem(Order order, LineItem lineItem, String code, int packetNumberForItem, BigDecimal itemTax, TenantSpecificConfigurations tenantSpecificConfigurations) {
+    private SaleOrderItem prepareSaleOrderItem(Order order, LineItem lineItem, String code, int packetNumberForItem, BigDecimal tax, BigDecimal discount) {
         SaleOrderItem saleOrderItem = new SaleOrderItem();
         saleOrderItem.setCode(code);
         saleOrderItem.setChannelSaleOrderItemCode(prepareChannelSaleOrderItemCode(lineItem));
@@ -489,9 +489,8 @@ public class BaseSaleOrderService implements ISaleOrderService {
         saleOrderItem.setItemName(prepareItemName(lineItem));
         saleOrderItem.setShippingMethodCode(SHIPPING_METHOD_CODE);
         saleOrderItem.setGiftMessage(prepareGiftMessage(lineItem));
-        BigDecimal itemDiscount = prepareDiscount(order, lineItem, tenantSpecificConfigurations);
-        BigDecimal sellingPrice = prepareSellingPrice(lineItem, itemDiscount, itemTax);
-        saleOrderItem.setDiscount(itemDiscount);
+        BigDecimal sellingPrice = prepareSellingPrice(lineItem, discount, tax);
+        saleOrderItem.setDiscount(discount);
         saleOrderItem.setTotalPrice(sellingPrice);
         saleOrderItem.setSellingPrice(sellingPrice);
         saleOrderItem.setVoucherCode(prepareVoucherCode(order.getDiscountCodes()));
@@ -545,7 +544,7 @@ public class BaseSaleOrderService implements ISaleOrderService {
         return sellingPrice.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : sellingPrice;
     }
 
-    public BigDecimal prepareDiscount(Order order, LineItem lineItem, TenantSpecificConfigurations tenantSpecificConfigurations) {
+    public BigDecimal prepareDiscountPerQty(Order order, LineItem lineItem, TenantSpecificConfigurations tenantSpecificConfigurations) {
         BigDecimal lineItemDiscount = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_EVEN);
         String[] discountCodesWithPrepaidAmount = tenantSpecificConfigurations.getDiscountCodesWithPrepaidAmount();
         for (DiscountAllocation discountAllocation : lineItem.getDiscountAllocations()) {
@@ -557,7 +556,8 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 lineItemDiscount = lineItemDiscount.add(discountAllocationAmount);
             }
         }
-        return lineItemDiscount;
+        BigDecimal lineItemQty = new BigDecimal(lineItem.getQuantity());
+        return lineItemDiscount.divide(lineItemQty, RoundingMode.HALF_EVEN);
     }
 
     private String getChannelPackageType() {
@@ -581,14 +581,15 @@ public class BaseSaleOrderService implements ISaleOrderService {
                 int packetNumberForItem = packetInfo.getSecond();
                 // TODO : Can't we just pass id-count both
                 BigDecimal lineItemTaxPerQty = order.isTaxesIncluded() ? BigDecimal.ZERO : getLineItemTaxPerQty(lineItem, qty);
+                BigDecimal lineItemDiscountPerQty = prepareDiscountPerQty(order, lineItem, tenantSpecificConfigurations);
                 if (qty == 1) {
-                    saleOrderItems.add(prepareSaleOrderItem(order, lineItem, channelSaleOrderItemCode, packetNumberForItem, lineItemTaxPerQty, tenantSpecificConfigurations));
+                    saleOrderItems.add(prepareSaleOrderItem(order, lineItem, channelSaleOrderItemCode, packetNumberForItem, lineItemTaxPerQty, lineItemDiscountPerQty));
                     Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem, configurationParameters);
                     totalPackets = updatedPacketInfo.getFirst();
                 } else {
                     for (int itemCount = 0; itemCount < qty; ++itemCount) {
                         String soiCode = channelSaleOrderItemCode + '-' + itemCount;
-                        saleOrderItems.add(prepareSaleOrderItem(order, lineItem, soiCode, packetNumberForItem, lineItemTaxPerQty, tenantSpecificConfigurations));
+                        saleOrderItems.add(prepareSaleOrderItem(order, lineItem, soiCode, packetNumberForItem, lineItemTaxPerQty, lineItemDiscountPerQty));
                         Pair<Integer, Integer> updatedPacketInfo = updatePacketInfo(countryCode, totalPackets, packetNumberForItem, configurationParameters);
                         totalPackets = updatedPacketInfo.getFirst();
                         packetNumberForItem = updatedPacketInfo.getSecond();
